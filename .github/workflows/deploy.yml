@@ -1,3 +1,27 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main   # runs when you push to main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy files to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "."
+          target: "~/app"
+
       - name: Run server on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -6,6 +30,8 @@
           key: ${{ secrets.EC2_KEY }}
           script: |
             cd ~/app
+
+            # Write environment variables into .env
             echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
             echo "APP_URLS=${{ secrets.APP_URLS }}" >> .env
@@ -20,8 +46,14 @@
             echo "S3_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> .env
             echo "S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> .env
             echo "S3_PUBLIC_BASE=${{ secrets.S3_PUBLIC_BASE }}" >> .env
+
+            # Install dependencies
             npm install --production
+
+            # Run Prisma migrations
             npx prisma migrate deploy
+
+            # Restart server using PM2 with correct entry point
             pm2 stop server || true
-            pm2 start npm --name server -- run start
+            pm2 start src/index.js --name server
             pm2 save
