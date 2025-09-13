@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Note: When using CloudFront + private S3, ensure your CloudFront distribution
+// uses an Origin Access Control (OAC) and your bucket policy allows that OAC.
+
+model User {
+  id            String                 @id @default(uuid())
+  name          String
+  email         String                 @unique
+  passwordHash  String
+  role          Role                   @default(STUDENT)
+  age           Int?
+  dateOfBirth   DateTime?
+  emailVerifiedAt DateTime?
+  otpCode       String?
+  otpExpiresAt  DateTime?
+  photoUrl      String?
+  resetToken    String?
+  resetTokenExp DateTime?
+  createdAt     DateTime               @default(now())
+  purchases     Purchase[]
+  notifications NotificationReceipt[]
+  meetingRequests MeetingRequest[]
+}
+
+enum Role {
+  USER
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+
+model Course {
+  id           String    @id @default(uuid())
+  title        String
+  slug         String    @unique
+  imageUrl     String?
+  priceCents   Int
+  shortDesc    String
+  longDesc     String
+  duration     String?
+  startDate    DateTime?
+  roadmapJson  Json?
+  syllabusJson Json?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  purchases    Purchase[]
+  coupons      Coupon[]
+}
+
+model Purchase {
+  id           String   @id @default(uuid())
+  userId       String
+  courseId     String
+  amountCents  Int
+  status       String
+  upiMobile    String?
+  upiTxnId     String?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+  course       Course   @relation(fields: [courseId], references: [id])
+}
+
+model Webinar {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  presenter   String?
+  startTime   DateTime
+  joinLink    String?
+  createdAt   DateTime @default(now())
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+  receipts  NotificationReceipt[]
+}
+
+model NotificationReceipt {
+  id             String        @id @default(uuid())
+  userId         String
+  announcementId String
+  isRead         Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  user           User          @relation(fields: [userId], references: [id])
+  announcement   Announcement  @relation(fields: [announcementId], references: [id])
+}
+
+model Coupon {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  discountPercent Int
+  courseId    String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  course      Course   @relation(fields: [courseId], references: [id])
+}
+
+model Testimonial {
+  id        String   @id @default(uuid())
+  studentName String
+  studentImage String?
+  comment   String
+  rating    Int      // 1-5 stars
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model MeetingRequest {
+  id          String   @id @default(uuid())
+  userId      String
+  studentName String
+  studentEmail String
+  preferredDate DateTime
+  preferredTime String
+  message     String?
+  status      MeetingStatus @default(PENDING)
+  adminMessage String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+enum MeetingStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
