@@ -74,8 +74,16 @@ export function adminRouter(prisma) {
   router.delete('/courses/:id', async (req, res, next) => {
     try {
       const id = req.params.id;
+      
+      // First, delete all purchases for this course
+      await prisma.purchase.deleteMany({ 
+        where: { courseId: id } 
+      });
+      
+      // Then delete the course
       await prisma.course.delete({ where: { id } });
-      res.json({ ok: true });
+      
+      res.json({ ok: true, message: 'Course and all associated purchases deleted successfully' });
     } catch (e) { next(e); }
   });
 
@@ -180,29 +188,40 @@ export function adminRouter(prisma) {
 // Presigned upload URL for S3 (course posters or user avatars)
 router.post('/uploads/presign', async (req, res, next) => {
   try {
+    console.log('=== ADMIN S3 PRESIGN DEBUG ===');
+    
     // Validate the incoming request body with zod
     const body = z.object({ 
       key: z.string(),           // File key to upload to S3
       contentType: z.string().optional()  // Optional content type (image/jpeg, etc.)
     }).parse(req.body);
 
+    console.log('Admin presign request body:', body);
+
     // Fetch the S3 bucket name from environment variables
     const bucket = process.env.S3_BUCKET;
     if (!bucket) return res.status(500).json({ error: 'S3 bucket not configured' });
 
-    // S3 only (public objects): allow ACL public-read so files are web-accessible
+    console.log('S3 bucket:', bucket);
+    console.log('S3 region:', process.env.S3_REGION);
+
+    // S3 upload without ACL (bucket has ACLs disabled)
     const post = await createPresignedPost(s3, {
       Bucket: bucket,
       Key: body.key,
       Conditions: [
-        ['starts-with', '$Content-Type', ''],
-        { acl: 'public-read' }
+        ['starts-with', '$Content-Type', '']
       ],
-      Fields: { acl: 'public-read', 'Content-Type': body.contentType || 'application/octet-stream' },
+      Fields: { 'Content-Type': body.contentType || 'application/octet-stream' },
       Expires: 60
     });
 
     const publicUrl = `https://${bucket}.s3.${process.env.S3_REGION}.amazonaws.com/${body.key}`;
+    
+    console.log('Generated presigned POST:', post);
+    console.log('Public URL:', publicUrl);
+    console.log('=== END ADMIN S3 PRESIGN DEBUG ===');
+    
     res.json({ mode: 'post', post, publicUrl });
   } catch (e) {
     next(e);  // Pass any errors to the next middleware (error handler)
