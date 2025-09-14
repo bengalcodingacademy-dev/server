@@ -33,11 +33,16 @@ export function authRouter(prisma) {
   
   // Add a middleware to check Prisma client on every request
   router.use((req, res, next) => {
+    console.log('🔍 Auth middleware running - checking Prisma client...');
+    console.log('Global prisma exists:', prisma ? 'YES' : 'NO');
+    
     if (!prisma) {
       console.error('❌ Prisma client is undefined in request handler!');
       return res.status(500).json({ error: 'Database connection error' });
     }
+    
     req.prisma = prisma; // Attach to request object as backup
+    console.log('✅ Prisma client attached to request object');
     next();
   });
   const transporter = nodemailer.createTransport({
@@ -107,9 +112,14 @@ export function authRouter(prisma) {
 
   // Admin login route
   router.post('/admin/login', async (req, res, next) => {
+    console.log('🚀 Admin login route called');
+    console.log('req.prisma exists:', req.prisma ? 'YES' : 'NO');
+    console.log('Global prisma exists:', prisma ? 'YES' : 'NO');
+    
     try {
       // Use request-level prisma as fallback
       const prismaClient = req.prisma || prisma;
+      console.log('prismaClient selected:', prismaClient ? 'EXISTS' : 'UNDEFINED');
       
       // Check if prisma client is properly initialized
       if (!prismaClient) {
@@ -127,6 +137,17 @@ export function authRouter(prisma) {
         return res.status(500).json({ error: 'Database connection failed' });
       }
 
+      console.log('About to call findUnique with prismaClient:', prismaClient ? 'EXISTS' : 'UNDEFINED');
+      console.log('prismaClient.admin:', prismaClient?.admin ? 'EXISTS' : 'UNDEFINED');
+      
+      if (!prismaClient || !prismaClient.admin) {
+        console.error('❌ prismaClient or prismaClient.admin is undefined!');
+        console.error('prismaClient:', prismaClient);
+        console.error('req.prisma:', req.prisma);
+        console.error('prisma (global):', prisma);
+        return res.status(500).json({ error: 'Database client not available' });
+      }
+      
       const admin = await prismaClient.admin.findUnique({ where: { username } });
       if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
       if (!admin.isActive) return res.status(403).json({ error: 'Admin account is deactivated' });
