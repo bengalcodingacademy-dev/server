@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Deploy to EC2 with HTTPS
 
 on:
   push:
@@ -22,15 +22,15 @@ jobs:
           source: "."
           target: "~/app"
 
-      - name: Setup & Run server on EC2
+      - name: Setup HTTPS & Deploy server on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           script: |
-            # Go to app dir
-            cd ~/app
+            # Update system packages
+            sudo apt-get update
 
             # Install Node.js & npm if not present
             if ! command -v node >/dev/null 2>&1; then
@@ -43,11 +43,23 @@ jobs:
               sudo npm install -g pm2
             fi
 
+            # Install Nginx if not present
+            if ! command -v nginx >/dev/null 2>&1; then
+              sudo apt-get install -y nginx
+            fi
+
+            # Install Certbot if not present
+            if ! command -v certbot >/dev/null 2>&1; then
+              sudo apt-get install -y certbot python3-certbot-nginx
+            fi
+
+            # Go to app directory
+            cd ~/app
+
             # Write environment variables
             cat > .env <<EOL
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
-            APP_URLS=${{ secrets.APP_URLS }}
             PORT=${{ secrets.PORT }}
             SMTP_HOST=${{ secrets.SMTP_HOST }}
             SMTP_PORT=${{ secrets.SMTP_PORT }}
@@ -61,13 +73,99 @@ jobs:
             S3_PUBLIC_BASE=${{ secrets.S3_PUBLIC_BASE }}
             EOL
 
-            # Install deps
+            # Install dependencies
             npm install --production
 
             # Run Prisma migrations
             npx prisma migrate deploy
 
-            # Restart with PM2
+            # Configure Nginx with SSL
+            sudo tee /etc/nginx/sites-available/your-app <<EOL
+            server {
+                listen 80;
+                server_name _;
+
+                # Redirect all HTTP requests to HTTPS
+                return 301 https://\$server_name\$request_uri;
+            }
+
+            server {
+                listen 443 ssl http2;
+                server_name _;
+
+                # SSL configuration (will be updated by Certbot)
+                ssl_certificate /etc/letsencrypt/live/\$hostname/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/\$hostname/privkey.pem;
+                include /etc/letsencrypt/options-ssl-nginx.conf;
+                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+                # Security headers
+                add_header X-Frame-Options "SAMEORIGIN" always;
+                add_header X-XSS-Protection "1; mode=block" always;
+                add_header X-Content-Type-Options "nosniff" always;
+                add_header Referrer-Policy "no-referrer-when-downgrade" always;
+                add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+
+                # Proxy to Node.js app
+                location / {
+                    proxy_pass http://localhost:${{ secrets.PORT }};
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade \$http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_cache_bypass \$http_upgrade;
+                }
+
+                # Handle WebSocket connections
+                location /socket.io/ {
+                    proxy_pass http://localhost:${{ secrets.PORT }};
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade \$http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                }
+            }
+            EOL
+
+            # Enable the site
+            sudo ln -sf /etc/nginx/sites-available/your-app /etc/nginx/sites-enabled/
+            sudo rm -f /etc/nginx/sites-enabled/default
+
+            # Test Nginx configuration
+            sudo nginx -t
+
+            # Start/restart Nginx
+            sudo systemctl restart nginx
+            sudo systemctl enable nginx
+
+            # Obtain SSL certificate with Certbot (using IP address)
+            sudo certbot certonly --standalone --non-interactive --agree-tos --email admin@example.com -d 43.205.115.85
+
+            # Update Nginx config with actual certificate paths
+            sudo sed -i 's/\$hostname/43.205.115.85/g' /etc/nginx/sites-available/your-app
+            sudo nginx -t && sudo systemctl reload nginx
+
+            # Restart server with PM2
             pm2 stop server || true
             pm2 start src/index.js --name server
             pm2 save
+
+            # Setup automatic certificate renewal
+            echo "0 12 * * * /usr/bin/certbot renew --quiet" | sudo crontab -
+
+            # Show status
+            echo "=== Deployment Status ==="
+            pm2 status
+            sudo systemctl status nginx --no-pager
+            echo "=== Backend is now available at ==="
+            echo "HTTPS: https://43.205.115.85/api/health"
+            echo "HTTP: http://43.205.115.85/api/health (redirects to HTTPS)"
+            echo "=== Frontend URLs ==="
+            echo "Web: https://bca-web-microfrontend.netlify.app/"
+            echo "Admin: https://dashing-cobbler-03a3cd.netlify.app/login"
