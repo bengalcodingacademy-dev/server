@@ -17,34 +17,9 @@ const loginSchema = z.object({
   password: z.string().min(8)
 });
 
-const adminLoginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1)
-});
 
 export function authRouter(prisma) {
-  console.log('Auth router initialized with prisma:', prisma ? 'YES' : 'NO');
-  if (!prisma) {
-    console.error('❌ Prisma client is undefined in authRouter!');
-    console.error('❌ This will cause all database operations to fail!');
-  }
-  
   const router = express.Router();
-  
-  // Add a middleware to check Prisma client on every request
-  router.use((req, res, next) => {
-    console.log('🔍 Auth middleware running - checking Prisma client...');
-    console.log('Global prisma exists:', prisma ? 'YES' : 'NO');
-    
-    if (!prisma) {
-      console.error('❌ Prisma client is undefined in request handler!');
-      return res.status(500).json({ error: 'Database connection error' });
-    }
-    
-    req.prisma = prisma; // Attach to request object as backup
-    console.log('✅ Prisma client attached to request object');
-    next();
-  });
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || 587),
@@ -90,10 +65,15 @@ export function authRouter(prisma) {
       const ok = await bcrypt.compare(password, user.passwordHash);
       if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
       if (!user.emailVerifiedAt) return res.status(403).json({ error: 'Please verify your email to continue.' });
+      
+      // Set different token expiration for admin users
+      const tokenExpiration = user.role === 'ADMIN' ? '8h' : '1h';
+      const maxAge = user.role === 'ADMIN' ? 8 * 60 * 60 * 1000 : 60 * 60 * 1000;
+      
       const accessToken = jwt.sign(
         { role: user.role },
         process.env.JWT_SECRET,
-        { algorithm: 'HS256', expiresIn: '1h', subject: user.id }
+        { algorithm: 'HS256', expiresIn: tokenExpiration, subject: user.id }
       );
       
       // Set cookie with token
@@ -101,98 +81,18 @@ export function authRouter(prisma) {
         httpOnly: true,
         secure: true, // Always secure for HTTPS
         sameSite: 'none', // Allow cross-site cookies
-        maxAge: 60 * 60 * 1000 // 1 hour
-      });
-      
-      res.json({ expiresInSec: 3600, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-    } catch (e) {
-      next(e);
-    }
-  });
-
-  // Admin login route
-  router.post('/admin/login', async (req, res, next) => {
-    console.log('🚀 Admin login route called');
-    console.log('req.prisma exists:', req.prisma ? 'YES' : 'NO');
-    console.log('Global prisma exists:', prisma ? 'YES' : 'NO');
-    
-    try {
-      // Use request-level prisma as fallback
-      const prismaClient = req.prisma || prisma;
-      console.log('prismaClient selected:', prismaClient ? 'EXISTS' : 'UNDEFINED');
-      
-      // Check if prisma client is properly initialized
-      if (!prismaClient) {
-        console.error('Prisma client is not initialized');
-        return res.status(500).json({ error: 'Database connection error' });
-      }
-
-      const { username, password } = adminLoginSchema.parse(req.body);
-      
-      // Test database connection first
-      try {
-        await prismaClient.$connect();
-      } catch (dbError) {
-        console.error('Database connection failed:', dbError);
-        return res.status(500).json({ error: 'Database connection failed' });
-      }
-
-      console.log('About to call findUnique with prismaClient:', prismaClient ? 'EXISTS' : 'UNDEFINED');
-      console.log('prismaClient.admin:', prismaClient?.admin ? 'EXISTS' : 'UNDEFINED');
-      
-      if (!prismaClient || !prismaClient.admin) {
-        console.error('❌ prismaClient or prismaClient.admin is undefined!');
-        console.error('prismaClient:', prismaClient);
-        console.error('req.prisma:', req.prisma);
-        console.error('prisma (global):', prisma);
-        return res.status(500).json({ error: 'Database client not available' });
-      }
-      
-      const admin = await prismaClient.admin.findUnique({ where: { username } });
-      if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
-      if (!admin.isActive) return res.status(403).json({ error: 'Admin account is deactivated' });
-      
-      const ok = await bcrypt.compare(password, admin.passwordHash);
-      if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-      
-      const accessToken = jwt.sign(
-        { role: 'ADMIN', adminId: admin.id },
-        process.env.JWT_SECRET,
-        { algorithm: 'HS256', expiresIn: '8h', subject: admin.id }
-      );
-      
-      // Update last login time
-      await prismaClient.admin.update({ 
-        where: { id: admin.id }, 
-        data: { lastLoginAt: new Date() } 
-      });
-      
-      // Set cookie with token
-      res.cookie('accessToken', accessToken, {
-        httpOnly: true,
-        secure: true, // Always secure for HTTPS
-        sameSite: 'none', // Allow cross-site cookies
-        maxAge: 8 * 60 * 60 * 1000 // 8 hours
+        maxAge: maxAge
       });
       
       res.json({ 
-        expiresInSec: 28800, // 8 hours
-        user: { 
-          id: admin.id, 
-          name: admin.name || admin.username, 
-          username: admin.username, 
-          email: admin.email,
-          role: 'ADMIN' 
-        } 
+        expiresInSec: user.role === 'ADMIN' ? 28800 : 3600, 
+        user: { id: user.id, name: user.name, email: user.email, role: user.role } 
       });
     } catch (e) {
-      console.error('Admin login error:', e);
-      if (e.name === 'PrismaClientInitializationError') {
-        return res.status(500).json({ error: 'Database connection error' });
-      }
       next(e);
     }
   });
+
 
   router.post('/verify-email', async (req, res, next) => {
     try {
@@ -240,66 +140,6 @@ export function authRouter(prisma) {
     } catch (e) { next(e); }
   });
 
-  // Admin auth check endpoint
-  router.get('/admin/me', async (req, res, next) => {
-    try {
-      // Use request-level prisma as fallback
-      const prismaClient = req.prisma || prisma;
-      
-      // Check if prisma client is properly initialized
-      if (!prismaClient) {
-        console.error('Prisma client is not initialized in admin/me');
-        return res.status(500).json({ error: 'Database connection error' });
-      }
-
-      // Try to get token from cookie first, then from Authorization header
-      let token = req.cookies?.accessToken;
-      if (!token) {
-        const authHeader = req.headers.authorization || '';
-        token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      }
-      
-      if (!token) return res.status(401).json({ error: 'Unauthorized' });
-      
-      const jwt = await import('jsonwebtoken');
-      const payload = jwt.default.verify(token, process.env.JWT_SECRET);
-      
-      if (payload.role !== 'ADMIN') {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-      
-      // Test database connection first
-      try {
-        await prismaClient.$connect();
-      } catch (dbError) {
-        console.error('Database connection failed in admin/me:', dbError);
-        return res.status(500).json({ error: 'Database connection failed' });
-      }
-      
-      const admin = await prismaClient.admin.findUnique({ where: { id: payload.sub } });
-      if (!admin || !admin.isActive) {
-        return res.status(401).json({ error: 'Admin not found or inactive' });
-      }
-      
-      res.json({
-        id: admin.id,
-        name: admin.name || admin.username,
-        username: admin.username,
-        email: admin.email,
-        role: 'ADMIN',
-        lastLoginAt: admin.lastLoginAt
-      });
-    } catch (e) {
-      console.error('Admin auth check error:', e);
-      if (e.name === 'TokenExpiredError') {
-        return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
-      }
-      if (e.name === 'PrismaClientInitializationError') {
-        return res.status(500).json({ error: 'Database connection error' });
-      }
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-  });
 
   // Logout
   router.post('/logout', (req, res) => {

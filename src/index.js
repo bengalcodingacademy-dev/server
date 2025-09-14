@@ -1,4 +1,3 @@
-console.log('🚀 Server starting...');
 import dotenv from 'dotenv';
 dotenv.config();
 import express from 'express';
@@ -35,13 +34,9 @@ const prisma = new PrismaClient({
 // Initialize server after database connection
 async function startServer() {
   try {
-    console.log('🔧 Initializing Prisma client...');
-    console.log('Database URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
-
     // Test database connection
     await prisma.$connect();
     console.log('✅ Database connected successfully');
-    console.log('Prisma client status:', prisma ? 'INITIALIZED' : 'NOT INITIALIZED');
 
     // Setup Express middleware
     app.use(helmet());
@@ -120,7 +115,6 @@ async function startServer() {
       }
     });
 
-    console.log('🔧 Setting up auth router with prisma:', prisma ? 'YES' : 'NO');
     app.use('/api/auth', authRouter(prisma));
     app.use('/api/courses', coursesRouter(prisma));
     app.use('/api/purchases', requireAuth, purchasesRouter(prisma));

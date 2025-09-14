@@ -4,9 +4,14 @@ import bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-  // Note: Admin credentials should be manually added to the Admin table
-  // Example SQL to add admin manually:
-  
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@bca.com';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
+  const admin = await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: { emailVerifiedAt: new Date() },
+    create: { name: 'Admin', email: adminEmail, passwordHash, role: 'ADMIN', emailVerifiedAt: new Date() }
+  });
 
   const coursesData = [
     { title: 'Full-Stack Web Dev', slug: 'full-stack-web-dev', priceCents: 29900, shortDesc: 'Learn MERN stack', longDesc: 'Comprehensive MERN course', duration: '12 weeks', isActive: true },
@@ -27,7 +32,7 @@ async function main() {
 
   await prisma.webinar.create({ data: { title: 'Get Started with React', description: 'Basics to advanced overview', presenter: 'R. Sen', startTime: new Date(Date.now() + 3 * 24 * 3600 * 1000), joinLink: 'https://example.com/join/react' } });
 
-  console.log('Seed complete. Admin credentials should be manually added to Admin table.');
+  console.log('Seed complete. Admin:', admin.email);
 }
 
 main().catch(e => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });
