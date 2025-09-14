@@ -36,7 +36,8 @@ app.use(cors({
     'http://localhost:5173',
     'http://localhost:5174', 
     'https://admin.bengalcodingacademy.com',
-    'https://bengalcodingacademy.com'
+    'https://bengalcodingacademy.com',
+    'https://www.bengalcodingacademy.com'
   ],
   credentials: true
 }));

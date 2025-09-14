@@ -83,7 +83,7 @@ jobs:
             sudo tee /etc/nginx/sites-available/your-app <<EOL
             server {
                 listen 80;
-                server_name bengalcodingacademy.com;
+                server_name api.bengalcodingacademy.com;
 
                 # Security headers
                 add_header X-Frame-Options "SAMEORIGIN" always;
@@ -134,7 +134,7 @@ jobs:
             sleep 5
 
             # Obtain SSL certificate with Certbot for domain
-            sudo certbot --nginx -d bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
+            sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
 
             # Restart server with PM2
             pm2 stop server || true
@@ -149,8 +149,8 @@ jobs:
             pm2 status
             sudo systemctl status nginx --no-pager
             echo "=== Backend is now available at ==="
-            echo "HTTPS: https://bengalcodingacademy.com/api/health"
-            echo "HTTP: http://bengalcodingacademy.com/api/health (redirects to HTTPS)"
+            echo "HTTPS: https://api.bengalcodingacademy.com/api/health"
+            echo "HTTP: http://api.bengalcodingacademy.com/api/health (redirects to HTTPS)"
             echo "Direct: http://43.205.115.85:4000/api/health"
             echo "=== Frontend URLs ==="
             echo "Web: https://bca-web-microfrontend.netlify.app/"
