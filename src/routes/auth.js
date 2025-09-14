@@ -73,8 +73,8 @@ export function authRouter(prisma) {
       // Set cookie with token
       res.cookie('accessToken', accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: true, // Always secure for HTTPS
+        sameSite: 'none', // Allow cross-site cookies
         maxAge: 60 * 60 * 1000 // 1 hour
       });
       
@@ -135,10 +135,10 @@ export function authRouter(prisma) {
     // Clear all possible token cookie variations
     const tokenNames = ['accessToken', 'refreshToken', 'token', 'authToken', 'sessionToken'];
     const cookieOptions = [
-      { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' },
-      { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/' },
+      { httpOnly: true, secure: true, sameSite: 'none', path: '/' },
+      { httpOnly: true, secure: true, sameSite: 'lax', path: '/' },
       { httpOnly: true, secure: false, sameSite: 'lax', path: '/' },
-      { httpOnly: false, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' },
+      { httpOnly: false, secure: true, sameSite: 'none', path: '/' },
       { httpOnly: false, secure: false, sameSite: 'lax', path: '/' }
     ];
     
