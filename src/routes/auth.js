@@ -17,6 +17,11 @@ const loginSchema = z.object({
   password: z.string().min(8)
 });
 
+const adminLoginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1)
+});
+
 export function authRouter(prisma) {
   const router = express.Router();
   const transporter = nodemailer.createTransport({
@@ -84,6 +89,52 @@ export function authRouter(prisma) {
     }
   });
 
+  // Admin login route
+  router.post('/admin/login', async (req, res, next) => {
+    try {
+      const { username, password } = adminLoginSchema.parse(req.body);
+      const admin = await prisma.admin.findUnique({ where: { username } });
+      if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
+      if (!admin.isActive) return res.status(403).json({ error: 'Admin account is deactivated' });
+      
+      const ok = await bcrypt.compare(password, admin.passwordHash);
+      if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+      
+      const accessToken = jwt.sign(
+        { role: 'ADMIN', adminId: admin.id },
+        process.env.JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '8h', subject: admin.id }
+      );
+      
+      // Update last login time
+      await prisma.admin.update({ 
+        where: { id: admin.id }, 
+        data: { lastLoginAt: new Date() } 
+      });
+      
+      // Set cookie with token
+      res.cookie('accessToken', accessToken, {
+        httpOnly: true,
+        secure: true, // Always secure for HTTPS
+        sameSite: 'none', // Allow cross-site cookies
+        maxAge: 8 * 60 * 60 * 1000 // 8 hours
+      });
+      
+      res.json({ 
+        expiresInSec: 28800, // 8 hours
+        user: { 
+          id: admin.id, 
+          name: admin.name || admin.username, 
+          username: admin.username, 
+          email: admin.email,
+          role: 'ADMIN' 
+        } 
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   router.post('/verify-email', async (req, res, next) => {
     try {
       const body = z.object({ email: z.string().email(), code: z.string().length(6) }).parse(req.body);
@@ -128,6 +179,46 @@ export function authRouter(prisma) {
       await prisma.user.update({ where: { id: user.id }, data: { passwordHash, resetToken: null, resetTokenExp: null } });
       res.json({ ok: true });
     } catch (e) { next(e); }
+  });
+
+  // Admin auth check endpoint
+  router.get('/admin/me', async (req, res, next) => {
+    try {
+      // Try to get token from cookie first, then from Authorization header
+      let token = req.cookies?.accessToken;
+      if (!token) {
+        const authHeader = req.headers.authorization || '';
+        token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      }
+      
+      if (!token) return res.status(401).json({ error: 'Unauthorized' });
+      
+      const jwt = await import('jsonwebtoken');
+      const payload = jwt.default.verify(token, process.env.JWT_SECRET);
+      
+      if (payload.role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      
+      const admin = await prisma.admin.findUnique({ where: { id: payload.sub } });
+      if (!admin || !admin.isActive) {
+        return res.status(401).json({ error: 'Admin not found or inactive' });
+      }
+      
+      res.json({
+        id: admin.id,
+        name: admin.name || admin.username,
+        username: admin.username,
+        email: admin.email,
+        role: 'ADMIN',
+        lastLoginAt: admin.lastLoginAt
+      });
+    } catch (e) {
+      if (e.name === 'TokenExpiredError') {
+        return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+      }
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
   });
 
   // Logout

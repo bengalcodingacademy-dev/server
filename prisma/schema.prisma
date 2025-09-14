@@ -30,6 +30,18 @@ model User {
   meetingRequests MeetingRequest[]
 }
 
+model Admin {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  passwordHash  String
+  name          String?
+  email         String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
 enum Role {
   USER
   ADMIN
