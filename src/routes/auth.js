@@ -23,6 +23,10 @@ const adminLoginSchema = z.object({
 });
 
 export function authRouter(prisma) {
+  console.log('Auth router initialized with prisma:', prisma ? 'YES' : 'NO');
+  if (!prisma) {
+    console.error('❌ Prisma client is undefined in authRouter!');
+  }
   const router = express.Router();
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
