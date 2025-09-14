@@ -3,7 +3,7 @@ name: Deploy to EC2
 on:
   push:
     branches:
-      - main   # runs when you push to main branch
+      - main   # deploy when you push to main
 
 jobs:
   deploy:
@@ -22,38 +22,52 @@ jobs:
           source: "."
           target: "~/app"
 
-      - name: Run server on EC2
+      - name: Setup & Run server on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           script: |
+            # Go to app dir
             cd ~/app
 
-            # Write environment variables into .env
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
-            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
-            echo "APP_URLS=${{ secrets.APP_URLS }}" >> .env
-            echo "PORT=${{ secrets.PORT }}" >> .env
-            echo "SMTP_HOST=${{ secrets.SMTP_HOST }}" >> .env
-            echo "SMTP_PORT=${{ secrets.SMTP_PORT }}" >> .env
-            echo "SMTP_USER=${{ secrets.SMTP_USER }}" >> .env
-            echo "SMTP_PASS=${{ secrets.SMTP_PASS }}" >> .env
-            echo "MAIL_FROM=${{ secrets.MAIL_FROM }}" >> .env
-            echo "S3_REGION=${{ secrets.S3_REGION }}" >> .env
-            echo "S3_BUCKET=${{ secrets.S3_BUCKET }}" >> .env
-            echo "S3_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> .env
-            echo "S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> .env
-            echo "S3_PUBLIC_BASE=${{ secrets.S3_PUBLIC_BASE }}" >> .env
+            # Install Node.js & npm if not present
+            if ! command -v node >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
 
-            # Install dependencies
+            # Install PM2 globally if not present
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm install -g pm2
+            fi
+
+            # Write environment variables
+            cat > .env <<EOL
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            APP_URLS=${{ secrets.APP_URLS }}
+            PORT=${{ secrets.PORT }}
+            SMTP_HOST=${{ secrets.SMTP_HOST }}
+            SMTP_PORT=${{ secrets.SMTP_PORT }}
+            SMTP_USER=${{ secrets.SMTP_USER }}
+            SMTP_PASS=${{ secrets.SMTP_PASS }}
+            MAIL_FROM=${{ secrets.MAIL_FROM }}
+            S3_REGION=${{ secrets.S3_REGION }}
+            S3_BUCKET=${{ secrets.S3_BUCKET }}
+            S3_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}
+            S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}
+            S3_PUBLIC_BASE=${{ secrets.S3_PUBLIC_BASE }}
+            EOL
+
+            # Install deps
             npm install --production
 
             # Run Prisma migrations
             npx prisma migrate deploy
 
-            # Restart server using PM2 with correct entry point
+            # Restart with PM2
             pm2 stop server || true
             pm2 start src/index.js --name server
             pm2 save
