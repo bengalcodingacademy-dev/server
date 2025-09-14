@@ -20,7 +20,26 @@ import { meRouter } from './routes/me.js';
 import { requireAuth, requireAdmin } from './middleware/auth.js';
 
 const app = express();
-const prisma = new PrismaClient();
+
+// Initialize Prisma client with better error handling
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL
+    }
+  }
+});
+
+// Test database connection on startup
+prisma.$connect()
+  .then(() => {
+    console.log('✅ Database connected successfully');
+  })
+  .catch((error) => {
+    console.error('❌ Database connection failed:', error);
+    process.exit(1);
+  });
 
 // const allowedOrigins = (process.env.APP_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
 
@@ -45,8 +64,30 @@ app.use(cors({
 }));
 app.use(rateLimit({ windowMs: 60 * 1000, max: 120 }));
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() });
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection
+    await prisma.$connect();
+    const adminCount = await prisma.admin.count();
+    const userCount = await prisma.user.count();
+    
+    res.json({ 
+      ok: true, 
+      time: new Date().toISOString(),
+      database: 'connected',
+      adminCount,
+      userCount,
+      env: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({ 
+      ok: false, 
+      time: new Date().toISOString(),
+      error: error.message,
+      database: 'disconnected'
+    });
+  }
 });
 
 app.use('/api/auth', authRouter(prisma));
@@ -69,8 +110,27 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT || 4000;
-app.listen(port, () => {
-  console.log(`Server running on :${port}`);
+const server = app.listen(port, () => {
+  console.log(`🚀 Server running on port ${port}`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('🔄 Shutting down gracefully...');
+  await prisma.$disconnect();
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', async () => {
+  console.log('🔄 Shutting down gracefully...');
+  await prisma.$disconnect();
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
 });
 
 
