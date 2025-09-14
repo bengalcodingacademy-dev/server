@@ -22,13 +22,16 @@ import { requireAuth, requireAdmin } from './middleware/auth.js';
 const app = express();
 const prisma = new PrismaClient();
 
-const allowedOrigins = (process.env.APP_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
+// const allowedOrigins = (process.env.APP_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
 
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
 app.use(cookieParser());
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+// app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({
+  origin: "*"
+}));
 app.use(rateLimit({ windowMs: 60 * 1000, max: 120 }));
 
 app.get('/api/health', (req, res) => {
