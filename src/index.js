@@ -76,7 +76,8 @@ async function startServer() {
           database: 'connected',
           adminCount,
           userCount,
-          env: process.env.NODE_ENV || 'development'
+          env: process.env.NODE_ENV || 'development',
+          prismaStatus: prisma ? 'INITIALIZED' : 'NOT_INITIALIZED'
         });
       } catch (error) {
         console.error('Health check failed:', error);
@@ -84,7 +85,36 @@ async function startServer() {
           ok: false, 
           time: new Date().toISOString(),
           error: error.message,
-          database: 'disconnected'
+          database: 'disconnected',
+          prismaStatus: prisma ? 'INITIALIZED' : 'NOT_INITIALIZED'
+        });
+      }
+    });
+
+    // Test endpoint to check Prisma client
+    app.get('/api/test-prisma', async (req, res) => {
+      try {
+        console.log('Testing Prisma client...');
+        console.log('Prisma client exists:', prisma ? 'YES' : 'NO');
+        
+        if (!prisma) {
+          return res.status(500).json({ error: 'Prisma client is undefined' });
+        }
+        
+        await prisma.$connect();
+        const adminCount = await prisma.admin.count();
+        
+        res.json({ 
+          success: true,
+          prismaClient: 'available',
+          adminCount,
+          message: 'Prisma client is working correctly'
+        });
+      } catch (error) {
+        console.error('Prisma test failed:', error);
+        res.status(500).json({ 
+          error: error.message,
+          prismaClient: prisma ? 'available' : 'undefined'
         });
       }
     });

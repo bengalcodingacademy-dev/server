@@ -26,8 +26,20 @@ export function authRouter(prisma) {
   console.log('Auth router initialized with prisma:', prisma ? 'YES' : 'NO');
   if (!prisma) {
     console.error('❌ Prisma client is undefined in authRouter!');
+    console.error('❌ This will cause all database operations to fail!');
   }
+  
   const router = express.Router();
+  
+  // Add a middleware to check Prisma client on every request
+  router.use((req, res, next) => {
+    if (!prisma) {
+      console.error('❌ Prisma client is undefined in request handler!');
+      return res.status(500).json({ error: 'Database connection error' });
+    }
+    req.prisma = prisma; // Attach to request object as backup
+    next();
+  });
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || 587),
@@ -96,8 +108,11 @@ export function authRouter(prisma) {
   // Admin login route
   router.post('/admin/login', async (req, res, next) => {
     try {
+      // Use request-level prisma as fallback
+      const prismaClient = req.prisma || prisma;
+      
       // Check if prisma client is properly initialized
-      if (!prisma) {
+      if (!prismaClient) {
         console.error('Prisma client is not initialized');
         return res.status(500).json({ error: 'Database connection error' });
       }
@@ -106,13 +121,13 @@ export function authRouter(prisma) {
       
       // Test database connection first
       try {
-        await prisma.$connect();
+        await prismaClient.$connect();
       } catch (dbError) {
         console.error('Database connection failed:', dbError);
         return res.status(500).json({ error: 'Database connection failed' });
       }
 
-      const admin = await prisma.admin.findUnique({ where: { username } });
+      const admin = await prismaClient.admin.findUnique({ where: { username } });
       if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
       if (!admin.isActive) return res.status(403).json({ error: 'Admin account is deactivated' });
       
@@ -126,7 +141,7 @@ export function authRouter(prisma) {
       );
       
       // Update last login time
-      await prisma.admin.update({ 
+      await prismaClient.admin.update({ 
         where: { id: admin.id }, 
         data: { lastLoginAt: new Date() } 
       });
@@ -207,8 +222,11 @@ export function authRouter(prisma) {
   // Admin auth check endpoint
   router.get('/admin/me', async (req, res, next) => {
     try {
+      // Use request-level prisma as fallback
+      const prismaClient = req.prisma || prisma;
+      
       // Check if prisma client is properly initialized
-      if (!prisma) {
+      if (!prismaClient) {
         console.error('Prisma client is not initialized in admin/me');
         return res.status(500).json({ error: 'Database connection error' });
       }
@@ -231,13 +249,13 @@ export function authRouter(prisma) {
       
       // Test database connection first
       try {
-        await prisma.$connect();
+        await prismaClient.$connect();
       } catch (dbError) {
         console.error('Database connection failed in admin/me:', dbError);
         return res.status(500).json({ error: 'Database connection failed' });
       }
       
-      const admin = await prisma.admin.findUnique({ where: { id: payload.sub } });
+      const admin = await prismaClient.admin.findUnique({ where: { id: payload.sub } });
       if (!admin || !admin.isActive) {
         return res.status(401).json({ error: 'Admin not found or inactive' });
       }
