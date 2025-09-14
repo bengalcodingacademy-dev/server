@@ -47,8 +47,19 @@ model Course {
   longDesc     String
   duration     String?
   startDate    DateTime?
+  endDate      DateTime?
   roadmapJson  Json?
   syllabusJson Json?
+  // New fields for enhanced course management
+  numberOfModules Int?
+  modulesJson  Json?     // Key-value pairs for module names and content
+  numberOfLectures Int?
+  language     String    @default("bengali") // english, hindi, bengali
+  starRating   Float?    @default(0.0)
+  numberOfStudents Int?  @default(0)
+  aboutCourse  String?   // Rich text content
+  courseIncludes Json?   // Array of course inclusions
+  testimonials Testimonial[]
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -111,10 +122,13 @@ model Testimonial {
   id        String   @id @default(uuid())
   studentName String
   studentImage String?
+  studentAbout String? // About the student
   comment   String
   rating    Int      // 1-5 stars
+  courseId  String?  // Link to course (optional)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  course    Course?  @relation(fields: [courseId], references: [id])
 }
 
 model MeetingRequest {

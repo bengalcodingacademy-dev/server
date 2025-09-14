@@ -13,8 +13,18 @@ const upsertCourseSchema = z.object({
   longDesc: z.string().min(2),
   duration: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
+  endDate: z.string().datetime().nullable().optional(),
   roadmapJson: z.any().optional(),
   syllabusJson: z.any().optional(),
+  // New enhanced fields
+  numberOfModules: z.number().int().nonnegative().optional(),
+  modulesJson: z.any().optional(),
+  numberOfLectures: z.number().int().nonnegative().optional(),
+  language: z.enum(['english', 'hindi', 'bengali']).default('bengali'),
+  starRating: z.number().min(0).max(5).optional(),
+  numberOfStudents: z.number().int().nonnegative().optional(),
+  aboutCourse: z.string().optional(),
+  courseIncludes: z.any().optional(),
   isActive: z.boolean().optional()
 });
 
@@ -258,8 +268,10 @@ router.post('/uploads/presign', async (req, res, next) => {
       const data = z.object({
         studentName: z.string().min(1),
         studentImage: z.string().optional(),
+        studentAbout: z.string().optional(),
         comment: z.string().min(1),
-        rating: z.number().int().min(1).max(5)
+        rating: z.number().int().min(1).max(5),
+        courseId: z.string().optional()
       }).parse(req.body);
       const testimonial = await prisma.testimonial.create({ data });
       res.json(testimonial);
@@ -272,8 +284,10 @@ router.post('/uploads/presign', async (req, res, next) => {
       const data = z.object({
         studentName: z.string().min(1),
         studentImage: z.string().optional(),
+        studentAbout: z.string().optional(),
         comment: z.string().min(1),
         rating: z.number().int().min(1).max(5),
+        courseId: z.string().optional(),
         isActive: z.boolean().optional()
       }).parse(req.body);
       const testimonial = await prisma.testimonial.update({ where: { id }, data });
