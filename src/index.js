@@ -63,8 +63,8 @@ async function startServer() {
       try {
         // Test database connection
         await prisma.$connect();
-        const adminCount = await prisma.admin.count();
         const userCount = await prisma.user.count();
+        const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
         
         res.json({ 
           ok: true, 
@@ -98,11 +98,13 @@ async function startServer() {
         }
         
         await prisma.$connect();
-        const adminCount = await prisma.admin.count();
+        const userCount = await prisma.user.count();
+        const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
         
         res.json({ 
           success: true,
           prismaClient: 'available',
+          userCount,
           adminCount,
           message: 'Prisma client is working correctly'
         });
