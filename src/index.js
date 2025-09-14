@@ -30,7 +30,15 @@ app.use(morgan('dev'));
 app.use(cookieParser());
 // app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(cors({
-  origin: "*"
+  origin: [
+    'https://bca-web-microfrontend.netlify.app',
+    'https://dashing-cobbler-03a3cd.netlify.app',
+    'http://localhost:5173',
+    'http://localhost:5174', 
+    'https://admin.bengalcodingacademy.com',
+    'https://bengalcodingacademy.com'
+  ],
+  credentials: true
 }));
 app.use(rateLimit({ windowMs: 60 * 1000, max: 120 }));
 
