@@ -25,6 +25,10 @@ const upsertCourseSchema = z.object({
   numberOfStudents: z.number().int().nonnegative().optional(),
   aboutCourse: z.string().optional(),
   courseIncludes: z.any().optional(),
+  // Monthly payment fields
+  durationMonths: z.number().int().positive().optional(),
+  monthlyFeeCents: z.number().int().nonnegative().optional(),
+  isMonthlyPayment: z.boolean().optional(),
   isActive: z.boolean().optional()
 });
 
@@ -32,13 +36,15 @@ const webinarSchema = z.object({
   title: z.string().min(2),
   description: z.string().optional(),
   presenter: z.string().optional(),
-  startTime: z.string().datetime(),
-  joinLink: z.string().url().optional()
+  startTime: z.string().optional(),
+  joinLink: z.string().optional(),
+  imageUrl: z.string().url().optional()
 });
 
 const announcementSchema = z.object({
   title: z.string().min(2),
-  body: z.string().min(2)
+  body: z.string().min(2),
+  courseId: z.string().optional()
 });
 
 export function adminRouter(prisma) {
@@ -81,19 +87,59 @@ export function adminRouter(prisma) {
     } catch (e) { next(e); }
   });
 
+  router.get('/courses/:id', async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const course = await prisma.course.findUnique({ 
+        where: { id },
+        include: { 
+          testimonials: true,
+          coupons: true
+        }
+      });
+      if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+      res.json(course);
+    } catch (e) { next(e); }
+  });
+
   router.delete('/courses/:id', async (req, res, next) => {
     try {
       const id = req.params.id;
       
-      // First, delete all purchases for this course
-      await prisma.purchase.deleteMany({ 
-        where: { courseId: id } 
+      // Force delete all related data
+      await prisma.$transaction(async (tx) => {
+        // Delete all purchases for this course
+        await tx.purchase.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all monthly purchases for this course
+        await tx.monthlyPurchase.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all testimonials for this course
+        await tx.testimonial.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all coupons for this course
+        await tx.coupon.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all announcements for this course
+        await tx.announcement.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Finally delete the course itself
+        await tx.course.delete({ where: { id } });
       });
       
-      // Then delete the course
-      await prisma.course.delete({ where: { id } });
-      
-      res.json({ ok: true, message: 'Course and all associated purchases deleted successfully' });
+      res.json({ ok: true, message: 'Course and all associated data deleted successfully' });
     } catch (e) { next(e); }
   });
 
@@ -108,8 +154,26 @@ export function adminRouter(prisma) {
   router.post('/purchases/:id/approve', async (req, res, next) => {
     try {
       const id = req.params.id;
-      const p = await prisma.purchase.update({ where: { id }, data: { status: 'PAID' } });
-      res.json(p);
+      
+      // Get the purchase with course details
+      const purchase = await prisma.purchase.findUnique({
+        where: { id },
+        include: { course: true, user: true }
+      });
+      
+      if (!purchase) {
+        return res.status(404).json({ error: 'Purchase not found' });
+      }
+      
+      // Update the purchase status to PAID
+      const updatedPurchase = await prisma.purchase.update({ 
+        where: { id }, 
+        data: { status: 'PAID' } 
+      });
+      
+      // No automatic payment request creation - user will manually pay for next month
+      
+      res.json(updatedPurchase);
     } catch (e) { next(e); }
   });
 
@@ -125,17 +189,41 @@ export function adminRouter(prisma) {
   router.post('/webinars', async (req, res, next) => {
     try {
       const data = webinarSchema.parse(req.body);
-      const item = await prisma.webinar.create({ data: { ...data, startTime: new Date(data.startTime) } });
+      const createData = { ...data };
+      if (data.startTime) {
+        createData.startTime = new Date(data.startTime);
+      }
+      const item = await prisma.webinar.create({ data: createData });
       res.json(item);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      if (e.name === 'ZodError') {
+        return res.status(400).json({
+          issues: e.issues,
+          message: 'Validation failed'
+        });
+      }
+      next(e); 
+    }
   });
   router.put('/webinars/:id', async (req, res, next) => {
     try {
       const id = req.params.id;
       const data = webinarSchema.parse(req.body);
-      const item = await prisma.webinar.update({ where: { id }, data: { ...data, startTime: new Date(data.startTime) } });
+      const updateData = { ...data };
+      if (data.startTime) {
+        updateData.startTime = new Date(data.startTime);
+      }
+      const item = await prisma.webinar.update({ where: { id }, data: updateData });
       res.json(item);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      if (e.name === 'ZodError') {
+        return res.status(400).json({
+          issues: e.issues,
+          message: 'Validation failed'
+        });
+      }
+      next(e); 
+    }
   });
   router.delete('/webinars/:id', async (req, res, next) => {
     try {
@@ -145,11 +233,31 @@ export function adminRouter(prisma) {
     } catch (e) { next(e); }
   });
 
+
   // Announcements
   router.post('/announcements', async (req, res, next) => {
     try {
       const data = announcementSchema.parse(req.body);
       const ann = await prisma.announcement.create({ data });
+      
+      // If announcement is course-specific, create notification receipts for users who purchased that course
+      if (data.courseId) {
+        const coursePurchases = await prisma.purchase.findMany({
+          where: { courseId: data.courseId, status: 'PAID' },
+          select: { userId: true }
+        });
+        
+        const receipts = coursePurchases.map(purchase => ({
+          userId: purchase.userId,
+          announcementId: ann.id,
+          isRead: false
+        }));
+        
+        if (receipts.length > 0) {
+          await prisma.notificationReceipt.createMany({ data: receipts });
+        }
+      }
+      
       res.json(ann);
     } catch (e) { next(e); }
   });

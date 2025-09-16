@@ -76,11 +76,12 @@ export function authRouter(prisma) {
         { algorithm: 'HS256', expiresIn: tokenExpiration, subject: user.id }
       );
       
-      // Set cookie with token
+      // Set cookie with token - adjust for local development
+      const isDevelopment = process.env.NODE_ENV !== 'production';
       res.cookie('accessToken', accessToken, {
         httpOnly: true,
-        secure: true, // Always secure for HTTPS
-        sameSite: 'none', // Allow cross-site cookies
+        secure: !isDevelopment, // Only secure in production
+        sameSite: isDevelopment ? 'lax' : 'none', // Lax for local development
         maxAge: maxAge
       });
       
@@ -145,7 +146,9 @@ export function authRouter(prisma) {
   router.post('/logout', (req, res) => {
     // Clear all possible token cookie variations
     const tokenNames = ['accessToken', 'refreshToken', 'token', 'authToken', 'sessionToken'];
+    const isDevelopment = process.env.NODE_ENV !== 'production';
     const cookieOptions = [
+      { httpOnly: true, secure: !isDevelopment, sameSite: isDevelopment ? 'lax' : 'none', path: '/' },
       { httpOnly: true, secure: true, sameSite: 'none', path: '/' },
       { httpOnly: true, secure: true, sameSite: 'lax', path: '/' },
       { httpOnly: true, secure: false, sameSite: 'lax', path: '/' },

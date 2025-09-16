@@ -33,6 +33,14 @@ export function coursesRouter(prisma) {
     } catch (e) { next(e); }
   });
 
+  router.get('/id/:id', async (req, res, next) => {
+    try {
+      const course = await prisma.course.findUnique({ where: { id: req.params.id } });
+      if (!course || !course.isActive) return res.status(404).json({ error: 'Not found' });
+      res.json(course);
+    } catch (e) { next(e); }
+  });
+
   return router;
 }
 
