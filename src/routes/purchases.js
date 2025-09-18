@@ -39,11 +39,33 @@ export function purchasesRouter(prisma) {
 
   router.get('/me', async (req, res, next) => {
     try {
+      // Use the composite index for optimal performance
       const list = await prisma.purchase.findMany({
-        where: { userId: req.user.id },
-        include: { course: true },
-        orderBy: { createdAt: 'desc' }
+        where: { 
+          userId: req.user.id 
+        },
+        include: { 
+          course: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              imageUrl: true,
+              shortDesc: true,
+              isMonthlyPayment: true,
+              durationMonths: true,
+              monthlyFeeCents: true,
+              priceCents: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        // Add a reasonable limit to prevent large result sets
+        take: 100
       });
+      
+      // Temporarily disable caching to debug the issue
+      // res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
       res.json(list);
     } catch (e) { next(e); }
   });

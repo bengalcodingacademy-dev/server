@@ -7,10 +7,58 @@ export function meRouter(prisma) {
 
   router.get('/summary', async (req, res, next) => {
     try {
-      const user = await prisma.user.findUnique({ where: { id: req.user.id }, include: { purchases: { include: { course: true } } } });
+      // Optimize by only selecting needed fields and using selective includes
+      const user = await prisma.user.findUnique({ 
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          age: true,
+          photoUrl: true,
+          purchases: {
+            select: {
+              status: true,
+              amountCents: true,
+              course: {
+                select: {
+                  id: true,
+                  title: true,
+                  imageUrl: true,
+                  shortDesc: true,
+                  isMonthlyPayment: true,
+                  durationMonths: true
+                }
+              }
+            }
+          }
+        }
+      });
+      
       const totalPaid = user.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a + b.amountCents, 0);
-      const courses = user.purchases.filter(p=>p.status==='PAID').map(p=>({ id: p.course.id, title: p.course.title }));
+      
+      // Group purchases by course to avoid duplicate course entries
+      const courseMap = new Map();
+      user.purchases.filter(p=>p.status==='PAID').forEach(purchase => {
+        const courseId = purchase.course.id;
+        if (!courseMap.has(courseId)) {
+          courseMap.set(courseId, {
+            id: purchase.course.id, 
+            title: purchase.course.title,
+            imageUrl: purchase.course.imageUrl,
+            shortDesc: purchase.course.shortDesc,
+            isMonthlyPayment: purchase.course.isMonthlyPayment,
+            durationMonths: purchase.course.durationMonths
+          });
+        }
+      });
+      
+      const courses = Array.from(courseMap.values());
       const status = user.purchases.length === 0 ? 'NEW' : (courses.length > 0 ? 'ENROLLED' : 'PENDING');
+      
+      // Temporarily disable caching to debug the issue
+      // res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
       res.json({
         id: user.id,
         name: user.name,

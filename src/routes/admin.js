@@ -58,6 +58,33 @@ export function adminRouter(prisma) {
   });
 
   // Courses
+  router.get('/courses', async (req, res, next) => {
+    try {
+      const courses = await prisma.course.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          imageUrl: true,
+          priceCents: true,
+          shortDesc: true,
+          isMonthlyPayment: true,
+          durationMonths: true,
+          monthlyFeeCents: true,
+          isActive: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Limit results
+      });
+      
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
+      res.json(courses);
+    } catch (e) { next(e); }
+  });
+
   router.post('/courses', async (req, res, next) => {
     try {
       const { coupons, ...courseData } = req.body;
@@ -146,7 +173,30 @@ export function adminRouter(prisma) {
   // Purchases table
   router.get('/purchases', async (req, res, next) => {
     try {
-      const list = await prisma.purchase.findMany({ include: { user: true, course: true }, orderBy: { createdAt: 'desc' } });
+      const list = await prisma.purchase.findMany({ 
+        include: { 
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }, 
+          course: {
+            select: {
+              id: true,
+              title: true,
+              isMonthlyPayment: true,
+              durationMonths: true
+            }
+          }
+        }, 
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Limit results
+      });
+      
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
       res.json(list);
     } catch (e) { next(e); }
   });
@@ -165,6 +215,15 @@ export function adminRouter(prisma) {
         return res.status(404).json({ error: 'Purchase not found' });
       }
       
+      // Check if purchase is already processed
+      if (purchase.status === 'PAID') {
+        return res.status(400).json({ error: 'Purchase already approved' });
+      }
+      
+      if (purchase.status === 'DECLINED') {
+        return res.status(400).json({ error: 'Purchase already declined' });
+      }
+      
       // Update the purchase status to PAID
       const updatedPurchase = await prisma.purchase.update({ 
         where: { id }, 
@@ -180,6 +239,25 @@ export function adminRouter(prisma) {
   router.post('/purchases/:id/decline', async (req, res, next) => {
     try {
       const id = req.params.id;
+      
+      // Get the purchase first to check status
+      const purchase = await prisma.purchase.findUnique({
+        where: { id }
+      });
+      
+      if (!purchase) {
+        return res.status(404).json({ error: 'Purchase not found' });
+      }
+      
+      // Check if purchase is already processed
+      if (purchase.status === 'PAID') {
+        return res.status(400).json({ error: 'Purchase already approved' });
+      }
+      
+      if (purchase.status === 'DECLINED') {
+        return res.status(400).json({ error: 'Purchase already declined' });
+      }
+      
       const p = await prisma.purchase.update({ where: { id }, data: { status: 'DECLINED' } });
       res.json(p);
     } catch (e) { next(e); }
@@ -287,7 +365,26 @@ export function adminRouter(prisma) {
   // Users list (read-only)
   router.get('/users', async (req, res, next) => {
     try {
-      const users = await prisma.user.findMany({ include: { purchases: true }, orderBy: { createdAt: 'desc' } });
+      const users = await prisma.user.findMany({ 
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          age: true,
+          dateOfBirth: true,
+          createdAt: true,
+          purchases: {
+            select: {
+              status: true,
+              amountCents: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Limit results
+      });
+      
       const mapped = users.map(u => ({
         id: u.id,
         name: u.name,
@@ -299,6 +396,9 @@ export function adminRouter(prisma) {
         purchasesCount: u.purchases.filter(p=>p.status==='PAID').length,
         totalPaidCents: u.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+b.amountCents,0)
       }));
+      
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
       res.json(mapped);
     } catch (e) { next(e); }
   });

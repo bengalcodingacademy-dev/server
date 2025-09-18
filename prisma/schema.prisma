@@ -29,6 +29,10 @@ model User {
   monthlyPurchases MonthlyPurchase[]
   notifications NotificationReceipt[]
   meetingRequests MeetingRequest[]
+
+  @@index([role])
+  @@index([createdAt])
+  @@index([emailVerifiedAt])
 }
 
 
@@ -73,6 +77,10 @@ model Course {
   purchases    Purchase[]
   monthlyPurchases MonthlyPurchase[]
   coupons      Coupon[]
+  content      CourseContent[]
+
+  @@index([isActive])
+  @@index([slug])
 }
 
 model Purchase {
@@ -90,6 +98,12 @@ model Purchase {
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id])
   course       Course   @relation(fields: [courseId], references: [id])
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([courseId])
+  @@index([status])
+  @@index([userId, status])
 }
 
 model MonthlyPurchase {
@@ -106,6 +120,13 @@ model MonthlyPurchase {
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id])
   course       Course   @relation(fields: [courseId], references: [id])
+
+  @@index([userId])
+  @@index([courseId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([courseId, monthNumber])
+  @@index([dueDate])
 }
 
 model Webinar {
@@ -117,6 +138,9 @@ model Webinar {
   joinLink    String?
   imageUrl    String?
   createdAt   DateTime @default(now())
+
+  @@index([startTime])
+  @@index([createdAt])
 }
 
 model Announcement {
@@ -127,6 +151,9 @@ model Announcement {
   createdAt DateTime @default(now())
   receipts  NotificationReceipt[]
   course    Course?  @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@index([createdAt])
 }
 
 model NotificationReceipt {
@@ -137,6 +164,10 @@ model NotificationReceipt {
   createdAt      DateTime      @default(now())
   user           User          @relation(fields: [userId], references: [id])
   announcement   Announcement  @relation(fields: [announcementId], references: [id])
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([announcementId])
 }
 
 model Coupon {
@@ -147,6 +178,9 @@ model Coupon {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   course      Course   @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@index([isActive])
 }
 
 model Testimonial {
@@ -160,6 +194,10 @@ model Testimonial {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   course    Course?  @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@index([isActive])
+  @@index([createdAt])
 }
 
 model MeetingRequest {
@@ -175,11 +213,36 @@ model MeetingRequest {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 enum MeetingStatus {
   PENDING
   APPROVED
   DECLINED
+}
+
+model CourseContent {
+  id          String   @id @default(cuid())
+  courseId    String
+  monthNumber Int      // Which month this content belongs to (1, 2, 3, etc.)
+  topicName   String   // Name of the topic/section
+  videoLink   String?  // Link to video recording
+  githubRepo  String?  // Link to GitHub repository
+  notes       String?  // Additional notes/content
+  order       Int      @default(0) // Order of topics within the month
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([courseId, monthNumber])
+  @@index([courseId, monthNumber, order])
+
+  @@map("course_content")
 }
 

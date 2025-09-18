@@ -7,9 +7,25 @@ export function announcementsRouter(prisma) {
   router.get('/', async (req, res, next) => {
     try {
       const list = await prisma.announcement.findMany({ 
-        include: { course: { select: { title: true, slug: true } } },
-        orderBy: { createdAt: 'desc' } 
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          courseId: true,
+          createdAt: true,
+          course: { 
+            select: { 
+              title: true, 
+              slug: true 
+            } 
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50 // Limit results
       });
+      
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
       res.json(list);
     } catch (e) { next(e); }
   });
@@ -17,18 +33,7 @@ export function announcementsRouter(prisma) {
   // Get user-specific announcements with read status
   router.get('/me', requireAuth, async (req, res, next) => {
     try {
-      const announcements = await prisma.announcement.findMany({
-        include: { 
-          course: { select: { title: true, slug: true } },
-          receipts: {
-            where: { userId: req.user.id },
-            select: { isRead: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      // Filter announcements that are either global (no courseId) or course-specific where user has purchased
+      // First get user's purchased course IDs
       const userPurchases = await prisma.purchase.findMany({
         where: { userId: req.user.id, status: 'PAID' },
         select: { courseId: true }
@@ -36,17 +41,44 @@ export function announcementsRouter(prisma) {
       
       const purchasedCourseIds = userPurchases.map(p => p.courseId);
       
-      const filteredAnnouncements = announcements.filter(ann => 
-        !ann.courseId || purchasedCourseIds.includes(ann.courseId)
-      );
+      // Get announcements that are either global or for purchased courses
+      const announcements = await prisma.announcement.findMany({
+        where: {
+          OR: [
+            { courseId: null }, // Global announcements
+            { courseId: { in: purchasedCourseIds } } // Course-specific announcements
+          ]
+        },
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          courseId: true,
+          createdAt: true,
+          course: { 
+            select: { 
+              title: true, 
+              slug: true 
+            } 
+          },
+          receipts: {
+            where: { userId: req.user.id },
+            select: { isRead: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50 // Limit results
+      });
 
       // Add read status to each announcement
-      const announcementsWithReadStatus = filteredAnnouncements.map(ann => ({
+      const announcementsWithReadStatus = announcements.map(ann => ({
         ...ann,
         isRead: ann.receipts.length > 0 ? ann.receipts[0].isRead : true, // If no receipt, consider it read (global announcement)
         receipts: undefined // Remove receipts from response
       }));
 
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
       res.json(announcementsWithReadStatus);
     } catch (e) { next(e); }
   });
