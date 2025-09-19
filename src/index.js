@@ -16,6 +16,7 @@ import { announcementsRouter } from './routes/announcements.js';
 import { testimonialsRouter } from './routes/testimonials.js';
 import { adminRouter } from './routes/admin.js';
 import { meRouter } from './routes/me.js';
+import { courseContentRouter } from './routes/courseContent.js';
 
 import { requireAuth, requireAdmin } from './middleware/auth.js';
 
@@ -124,6 +125,7 @@ async function startServer() {
     app.use('/api/announcements', announcementsRouter(prisma));
     app.use('/api/testimonials', testimonialsRouter(prisma));
     app.use('/api/me', requireAuth, meRouter(prisma));
+    app.use('/api/course-content', requireAuth, courseContentRouter(prisma));
 
     // Admin scoped
     app.use('/api/admin', requireAuth, requireAdmin, adminRouter(prisma));

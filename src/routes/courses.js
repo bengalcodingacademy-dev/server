@@ -20,7 +20,30 @@ export function coursesRouter(prisma) {
 
   router.get('/', async (req, res, next) => {
     try {
-      const courses = await prisma.course.findMany({ where: { isActive: true }, orderBy: { createdAt: 'desc' } });
+      const courses = await prisma.course.findMany({ 
+        where: { isActive: true },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          imageUrl: true,
+          priceCents: true,
+          shortDesc: true,
+          longDesc: true,
+          duration: true,
+          startDate: true,
+          endDate: true,
+          isMonthlyPayment: true,
+          durationMonths: true,
+          monthlyFeeCents: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50 // Limit results
+      });
+      
+      // Set cache headers
+      res.set('Cache-Control', 'public, max-age=300'); // Cache for 5 minutes
       res.json(courses);
     } catch (e) { next(e); }
   });
@@ -28,6 +51,14 @@ export function coursesRouter(prisma) {
   router.get('/:slug', async (req, res, next) => {
     try {
       const course = await prisma.course.findUnique({ where: { slug: req.params.slug } });
+      if (!course || !course.isActive) return res.status(404).json({ error: 'Not found' });
+      res.json(course);
+    } catch (e) { next(e); }
+  });
+
+  router.get('/id/:id', async (req, res, next) => {
+    try {
+      const course = await prisma.course.findUnique({ where: { id: req.params.id } });
       if (!course || !course.isActive) return res.status(404).json({ error: 'Not found' });
       res.json(course);
     } catch (e) { next(e); }

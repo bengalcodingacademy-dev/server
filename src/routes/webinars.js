@@ -5,7 +5,38 @@ export function webinarsRouter(prisma) {
 
   router.get('/', async (req, res, next) => {
     try {
-      const items = await prisma.webinar.findMany({ orderBy: { startTime: 'asc' } });
+      // First, clean up past webinars (older than 1 day) - do this less frequently
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      await prisma.webinar.deleteMany({
+        where: {
+          startTime: {
+            lt: oneDayAgo
+          }
+        }
+      });
+
+      // Get upcoming webinars only
+      const items = await prisma.webinar.findMany({ 
+        where: {
+          startTime: {
+            gte: new Date()
+          }
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          presenter: true,
+          startTime: true,
+          joinLink: true,
+          imageUrl: true
+        },
+        orderBy: { startTime: 'asc' },
+        take: 20 // Limit results
+      });
+      
+      // Set cache headers
+      res.set('Cache-Control', 'public, max-age=60'); // Cache for 1 minute
       res.json(items);
     } catch (e) { next(e); }
   });

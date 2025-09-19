@@ -25,6 +25,10 @@ const upsertCourseSchema = z.object({
   numberOfStudents: z.number().int().nonnegative().optional(),
   aboutCourse: z.string().optional(),
   courseIncludes: z.any().optional(),
+  // Monthly payment fields
+  durationMonths: z.number().int().positive().optional(),
+  monthlyFeeCents: z.number().int().nonnegative().optional(),
+  isMonthlyPayment: z.boolean().optional(),
   isActive: z.boolean().optional()
 });
 
@@ -32,13 +36,15 @@ const webinarSchema = z.object({
   title: z.string().min(2),
   description: z.string().optional(),
   presenter: z.string().optional(),
-  startTime: z.string().datetime(),
-  joinLink: z.string().url().optional()
+  startTime: z.string().optional(),
+  joinLink: z.string().optional(),
+  imageUrl: z.string().url().optional()
 });
 
 const announcementSchema = z.object({
   title: z.string().min(2),
-  body: z.string().min(2)
+  body: z.string().min(2),
+  courseId: z.string().optional()
 });
 
 export function adminRouter(prisma) {
@@ -52,6 +58,33 @@ export function adminRouter(prisma) {
   });
 
   // Courses
+  router.get('/courses', async (req, res, next) => {
+    try {
+      const courses = await prisma.course.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          imageUrl: true,
+          priceCents: true,
+          shortDesc: true,
+          isMonthlyPayment: true,
+          durationMonths: true,
+          monthlyFeeCents: true,
+          isActive: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Limit results
+      });
+      
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
+      res.json(courses);
+    } catch (e) { next(e); }
+  });
+
   router.post('/courses', async (req, res, next) => {
     try {
       const { coupons, ...courseData } = req.body;
@@ -81,26 +114,89 @@ export function adminRouter(prisma) {
     } catch (e) { next(e); }
   });
 
+  router.get('/courses/:id', async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const course = await prisma.course.findUnique({ 
+        where: { id },
+        include: { 
+          testimonials: true,
+          coupons: true
+        }
+      });
+      if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+      res.json(course);
+    } catch (e) { next(e); }
+  });
+
   router.delete('/courses/:id', async (req, res, next) => {
     try {
       const id = req.params.id;
       
-      // First, delete all purchases for this course
-      await prisma.purchase.deleteMany({ 
-        where: { courseId: id } 
+      // Force delete all related data
+      await prisma.$transaction(async (tx) => {
+        // Delete all purchases for this course
+        await tx.purchase.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all monthly purchases for this course
+        await tx.monthlyPurchase.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all testimonials for this course
+        await tx.testimonial.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all coupons for this course
+        await tx.coupon.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Delete all announcements for this course
+        await tx.announcement.deleteMany({ 
+          where: { courseId: id } 
+        });
+        
+        // Finally delete the course itself
+        await tx.course.delete({ where: { id } });
       });
       
-      // Then delete the course
-      await prisma.course.delete({ where: { id } });
-      
-      res.json({ ok: true, message: 'Course and all associated purchases deleted successfully' });
+      res.json({ ok: true, message: 'Course and all associated data deleted successfully' });
     } catch (e) { next(e); }
   });
 
   // Purchases table
   router.get('/purchases', async (req, res, next) => {
     try {
-      const list = await prisma.purchase.findMany({ include: { user: true, course: true }, orderBy: { createdAt: 'desc' } });
+      const list = await prisma.purchase.findMany({ 
+        include: { 
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }, 
+          course: {
+            select: {
+              id: true,
+              title: true,
+              isMonthlyPayment: true,
+              durationMonths: true
+            }
+          }
+        }, 
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Limit results
+      });
+      
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
       res.json(list);
     } catch (e) { next(e); }
   });
@@ -108,14 +204,60 @@ export function adminRouter(prisma) {
   router.post('/purchases/:id/approve', async (req, res, next) => {
     try {
       const id = req.params.id;
-      const p = await prisma.purchase.update({ where: { id }, data: { status: 'PAID' } });
-      res.json(p);
+      
+      // Get the purchase with course details
+      const purchase = await prisma.purchase.findUnique({
+        where: { id },
+        include: { course: true, user: true }
+      });
+      
+      if (!purchase) {
+        return res.status(404).json({ error: 'Purchase not found' });
+      }
+      
+      // Check if purchase is already processed
+      if (purchase.status === 'PAID') {
+        return res.status(400).json({ error: 'Purchase already approved' });
+      }
+      
+      if (purchase.status === 'DECLINED') {
+        return res.status(400).json({ error: 'Purchase already declined' });
+      }
+      
+      // Update the purchase status to PAID
+      const updatedPurchase = await prisma.purchase.update({ 
+        where: { id }, 
+        data: { status: 'PAID' } 
+      });
+      
+      // No automatic payment request creation - user will manually pay for next month
+      
+      res.json(updatedPurchase);
     } catch (e) { next(e); }
   });
 
   router.post('/purchases/:id/decline', async (req, res, next) => {
     try {
       const id = req.params.id;
+      
+      // Get the purchase first to check status
+      const purchase = await prisma.purchase.findUnique({
+        where: { id }
+      });
+      
+      if (!purchase) {
+        return res.status(404).json({ error: 'Purchase not found' });
+      }
+      
+      // Check if purchase is already processed
+      if (purchase.status === 'PAID') {
+        return res.status(400).json({ error: 'Purchase already approved' });
+      }
+      
+      if (purchase.status === 'DECLINED') {
+        return res.status(400).json({ error: 'Purchase already declined' });
+      }
+      
       const p = await prisma.purchase.update({ where: { id }, data: { status: 'DECLINED' } });
       res.json(p);
     } catch (e) { next(e); }
@@ -125,17 +267,41 @@ export function adminRouter(prisma) {
   router.post('/webinars', async (req, res, next) => {
     try {
       const data = webinarSchema.parse(req.body);
-      const item = await prisma.webinar.create({ data: { ...data, startTime: new Date(data.startTime) } });
+      const createData = { ...data };
+      if (data.startTime) {
+        createData.startTime = new Date(data.startTime);
+      }
+      const item = await prisma.webinar.create({ data: createData });
       res.json(item);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      if (e.name === 'ZodError') {
+        return res.status(400).json({
+          issues: e.issues,
+          message: 'Validation failed'
+        });
+      }
+      next(e); 
+    }
   });
   router.put('/webinars/:id', async (req, res, next) => {
     try {
       const id = req.params.id;
       const data = webinarSchema.parse(req.body);
-      const item = await prisma.webinar.update({ where: { id }, data: { ...data, startTime: new Date(data.startTime) } });
+      const updateData = { ...data };
+      if (data.startTime) {
+        updateData.startTime = new Date(data.startTime);
+      }
+      const item = await prisma.webinar.update({ where: { id }, data: updateData });
       res.json(item);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      if (e.name === 'ZodError') {
+        return res.status(400).json({
+          issues: e.issues,
+          message: 'Validation failed'
+        });
+      }
+      next(e); 
+    }
   });
   router.delete('/webinars/:id', async (req, res, next) => {
     try {
@@ -145,11 +311,31 @@ export function adminRouter(prisma) {
     } catch (e) { next(e); }
   });
 
+
   // Announcements
   router.post('/announcements', async (req, res, next) => {
     try {
       const data = announcementSchema.parse(req.body);
       const ann = await prisma.announcement.create({ data });
+      
+      // If announcement is course-specific, create notification receipts for users who purchased that course
+      if (data.courseId) {
+        const coursePurchases = await prisma.purchase.findMany({
+          where: { courseId: data.courseId, status: 'PAID' },
+          select: { userId: true }
+        });
+        
+        const receipts = coursePurchases.map(purchase => ({
+          userId: purchase.userId,
+          announcementId: ann.id,
+          isRead: false
+        }));
+        
+        if (receipts.length > 0) {
+          await prisma.notificationReceipt.createMany({ data: receipts });
+        }
+      }
+      
       res.json(ann);
     } catch (e) { next(e); }
   });
@@ -179,7 +365,26 @@ export function adminRouter(prisma) {
   // Users list (read-only)
   router.get('/users', async (req, res, next) => {
     try {
-      const users = await prisma.user.findMany({ include: { purchases: true }, orderBy: { createdAt: 'desc' } });
+      const users = await prisma.user.findMany({ 
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          age: true,
+          dateOfBirth: true,
+          createdAt: true,
+          purchases: {
+            select: {
+              status: true,
+              amountCents: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Limit results
+      });
+      
       const mapped = users.map(u => ({
         id: u.id,
         name: u.name,
@@ -191,6 +396,9 @@ export function adminRouter(prisma) {
         purchasesCount: u.purchases.filter(p=>p.status==='PAID').length,
         totalPaidCents: u.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+b.amountCents,0)
       }));
+      
+      // Set cache headers
+      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
       res.json(mapped);
     } catch (e) { next(e); }
   });
