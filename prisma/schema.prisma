@@ -246,3 +246,20 @@ model CourseContent {
   @@map("course_content")
 }
 
+model YouTubeVideo {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  videoUrl    String   // YouTube video URL
+  thumbnailUrl String? // YouTube thumbnail URL
+  duration    String?  // Video duration
+  order       Int      @default(0) // For ordering videos
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([order])
+  @@index([createdAt])
+}
+

@@ -10,7 +10,6 @@ const createCourseSchema = z.object({
   longDesc: z.string().min(2),
   duration: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
-  roadmapJson: z.any().optional(),
   syllabusJson: z.any().optional(),
   isActive: z.boolean().optional()
 });
