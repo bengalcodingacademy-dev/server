@@ -36,6 +36,10 @@ const prisma = new PrismaClient({
 // Initialize server after database connection
 async function startServer() {
   try {
+    console.log('🔄 Starting server initialization...');
+    console.log(`📋 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔌 Port: ${process.env.PORT || 4000}`);
+    
     // Test database connection
     await prisma.$connect();
     console.log('✅ Database connected successfully');
@@ -58,6 +62,16 @@ async function startServer() {
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
     }));
     app.use(rateLimit({ windowMs: 60 * 1000, max: 120 }));
+
+    // Simple root endpoint for basic connectivity test
+    app.get('/', (req, res) => {
+      res.json({ 
+        message: 'Bengal Coding Academy API Server', 
+        status: 'running',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0'
+      });
+    });
 
     app.get('/api/health', async (req, res) => {
       try {
@@ -139,8 +153,10 @@ async function startServer() {
     });
 
     const port = process.env.PORT || 4000;
-    const server = app.listen(port, () => {
+    const server = app.listen(port, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${port}`);
+      console.log(`🌐 Server accessible at http://localhost:${port}`);
+      console.log(`📊 Health check available at http://localhost:${port}/api/health`);
     });
 
     // Graceful shutdown
