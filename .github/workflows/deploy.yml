@@ -28,7 +28,7 @@ jobs:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_KEY }}
-          source: "server/"
+          source: "."
           target: "~/backend-app"
 
       - name: Setup and Deploy Backend on DigitalOcean
