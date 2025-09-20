@@ -73,6 +73,24 @@ async function startServer() {
       });
     });
 
+    // Handle favicon requests to prevent 404s
+    app.get('/favicon.ico', (req, res) => {
+      res.status(204).end();
+    });
+
+    // Handle common bot requests
+    app.get('/ads.txt', (req, res) => {
+      res.status(204).end();
+    });
+
+    app.get('/app-ads.txt', (req, res) => {
+      res.status(204).end();
+    });
+
+    app.get('/sellers.json', (req, res) => {
+      res.status(204).end();
+    });
+
     app.get('/api/health', async (req, res) => {
       try {
         // Test database connection

@@ -39,25 +39,35 @@ jobs:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_KEY }}
-          timeout: 300s
-          command_timeout: 300s
+          timeout: 600s
+          command_timeout: 600s
           script: |
-            # Update system packages
-            sudo apt-get update -y
-
-            # Install Node.js if not installed
+            # Skip system updates and installations if already present
+            echo "Checking system requirements..."
+            
+            # Only install if not present
             if ! command -v node >/dev/null 2>&1; then
+              echo "Installing Node.js..."
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
               sudo apt-get install -y nodejs
+            else
+              echo "Node.js already installed"
             fi
 
-            # Install PM2 globally if not present
             if ! command -v pm2 >/dev/null 2>&1; then
+              echo "Installing PM2..."
               sudo npm install -g pm2
+            else
+              echo "PM2 already installed"
             fi
 
-            # Install Nginx & Certbot if not present
-            sudo apt-get install -y nginx certbot python3-certbot-nginx
+            if ! command -v nginx >/dev/null 2>&1; then
+              echo "Installing Nginx and Certbot..."
+              sudo apt-get update -y
+              sudo apt-get install -y nginx certbot python3-certbot-nginx
+            else
+              echo "Nginx already installed"
+            fi
 
             # Go to backend directory
             cd ~/backend-app
@@ -79,8 +89,13 @@ jobs:
             S3_PUBLIC_BASE=${{ secrets.S3_PUBLIC_BASE }}
             EOL
 
-            # Install dependencies fresh
-            npm ci
+            # Install dependencies (skip if node_modules exists and package-lock.json is newer)
+            if [ ! -d "node_modules" ] || [ "package-lock.json" -nt "node_modules" ]; then
+              echo "Installing dependencies..."
+              npm ci
+            else
+              echo "Dependencies already up to date"
+            fi
 
             # Generate Prisma client
             npx prisma generate --schema=prisma/schema.prisma
@@ -112,8 +127,13 @@ jobs:
             sudo nginx -t
             sudo systemctl restart nginx
 
-            # SSL certificate
-            sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
+            # SSL certificate (only if needed)
+            if ! sudo certbot certificates | grep -q "api.bengalcodingacademy.com"; then
+              echo "Obtaining SSL certificate..."
+              sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
+            else
+              echo "SSL certificate already exists"
+            fi
 
             # Start app with PM2
             pm2 stop backend-api || true
@@ -148,57 +168,22 @@ jobs:
             pm2 start ecosystem.config.cjs
             pm2 save
 
-            # Wait for server to be ready
+            # Quick health check
             echo "Waiting for server to start..."
-            sleep 10
+            sleep 5
             
-            # Check if server is running
+            # Check PM2 status
             pm2 status
             
-            # Check PM2 logs for any startup errors
-            echo "Checking PM2 logs for errors..."
-            pm2 logs backend-api --lines 20 || echo "No logs available yet"
-            
-            # Check if the port is being used
-            echo "Checking if port is in use..."
-            netstat -tlnp | grep :${{ secrets.PORT }} || echo "Port not found in netstat"
-            
-            # Check process details
-            echo "Checking process details..."
-            ps aux | grep node || echo "No node processes found"
-            
-            # Test server connectivity with retry logic
-            echo "Testing server connectivity..."
-            for i in {1..5}; do
-              echo "Attempt $i/5..."
-              if curl -f -s http://localhost:${{ secrets.PORT }}/ > /dev/null; then
-                echo "✅ Basic connectivity test passed!"
-                break
-              else
-                echo "❌ Basic connectivity test failed, retrying in 5 seconds..."
-                sleep 5
-              fi
-            done
-            
-            # Test health endpoint
-            echo "Testing health endpoint..."
-            for i in {1..3}; do
-              echo "Health check attempt $i/3..."
-              if curl -f -s http://localhost:${{ secrets.PORT }}/api/health > /dev/null; then
-                echo "✅ Health check passed!"
-                break
-              else
-                echo "❌ Health check failed, retrying in 3 seconds..."
-                sleep 3
-              fi
-            done
-            
-            # Final connectivity tests with detailed output
-            echo "Final connectivity tests:"
-            echo "1. Root endpoint:"
-            curl -v http://localhost:${{ secrets.PORT }}/ || echo "Root endpoint failed"
-            echo "2. Health endpoint:"
-            curl -v http://localhost:${{ secrets.PORT }}/api/health || echo "Health endpoint failed"
+            # Simple health check with timeout
+            echo "Testing server health..."
+            if timeout 10s curl -f -s http://localhost:${{ secrets.PORT }}/api/health > /dev/null; then
+              echo "✅ Health check passed!"
+            else
+              echo "❌ Health check failed - checking logs..."
+              pm2 logs backend-api --lines 10
+              exit 1
+            fi
 
             # Setup auto-renew for certs
             echo "0 12 * * * /usr/bin/certbot renew --quiet" | sudo crontab -
