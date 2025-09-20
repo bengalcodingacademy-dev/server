@@ -14,7 +14,6 @@ const upsertCourseSchema = z.object({
   duration: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   endDate: z.string().datetime().nullable().optional(),
-  roadmapJson: z.any().optional(),
   syllabusJson: z.any().optional(),
   // New enhanced fields
   numberOfModules: z.number().int().nonnegative().optional(),
@@ -495,8 +494,7 @@ router.post('/uploads/presign', async (req, res, next) => {
         studentAbout: z.string().optional(),
         comment: z.string().min(1),
         rating: z.number().int().min(1).max(5),
-        courseId: z.string().optional(),
-        isActive: z.boolean().optional()
+        courseId: z.string().optional()
       }).parse(req.body);
       const testimonial = await prisma.testimonial.update({ where: { id }, data });
       res.json(testimonial);
@@ -507,6 +505,52 @@ router.post('/uploads/presign', async (req, res, next) => {
     try {
       const id = req.params.id;
       await prisma.testimonial.delete({ where: { id } });
+      res.json({ success: true });
+    } catch (e) { next(e); }
+  });
+
+  // YouTube Videos CRUD
+  router.get('/youtube-videos', async (req, res, next) => {
+    try {
+      const videos = await prisma.youTubeVideo.findMany({ 
+        orderBy: { createdAt: 'desc' } 
+      });
+      res.json(videos);
+    } catch (e) { next(e); }
+  });
+
+  router.post('/youtube-videos', async (req, res, next) => {
+    try {
+      const data = z.object({
+        title: z.string().min(1),
+        videoUrl: z.string().url(),
+        thumbnailUrl: z.string().url().optional(),
+        isActive: z.boolean().optional()
+      }).parse(req.body);
+      
+      const video = await prisma.youTubeVideo.create({ data });
+      res.json(video);
+    } catch (e) { next(e); }
+  });
+
+  router.put('/youtube-videos/:id', async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const data = z.object({
+        title: z.string().min(1).optional(),
+        videoUrl: z.string().url().optional(),
+        thumbnailUrl: z.string().url().optional(),
+        isActive: z.boolean().optional()
+      }).parse(req.body);
+      const video = await prisma.youTubeVideo.update({ where: { id }, data });
+      res.json(video);
+    } catch (e) { next(e); }
+  });
+
+  router.delete('/youtube-videos/:id', async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      await prisma.youTubeVideo.delete({ where: { id } });
       res.json({ success: true });
     } catch (e) { next(e); }
   });

@@ -1,11 +1,73 @@
 import express from 'express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import jwt from 'jsonwebtoken';
 
 export function meRouter(prisma) {
   const router = express.Router();
 
-  router.get('/summary', async (req, res, next) => {
+  // Simple auth middleware for protected routes
+  const requireAuth = (req, res, next) => {
+    try {
+      let token = req.cookies?.accessToken;
+      if (!token) {
+        const authHeader = req.headers.authorization || '';
+        token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      }
+      
+      if (!token) return res.status(401).json({ error: 'Unauthorized' });
+      
+      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = { id: payload.sub, role: payload.role };
+      next();
+    } catch (e) {
+      if (e.name === 'TokenExpiredError') {
+        return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+      }
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  };
+
+  // Public endpoint to check auth status without requiring authentication
+  router.get('/', async (req, res, next) => {
+    try {
+      // Try to get token from cookie first, then from Authorization header
+      let token = req.cookies?.accessToken;
+      if (!token) {
+        const authHeader = req.headers.authorization || '';
+        token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      }
+      
+      if (!token) {
+        return res.json({ user: null, authenticated: false });
+      }
+      
+      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      
+      // Get basic user info
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          photoUrl: true
+        }
+      });
+      
+      if (!user) {
+        return res.json({ user: null, authenticated: false });
+      }
+      
+      res.json({ user, authenticated: true });
+    } catch (e) {
+      // Token invalid or expired
+      res.json({ user: null, authenticated: false });
+    }
+  });
+
+  router.get('/summary', requireAuth, async (req, res, next) => {
     try {
       // Optimize by only selecting needed fields and using selective includes
       const user = await prisma.user.findUnique({ 
@@ -73,7 +135,7 @@ export function meRouter(prisma) {
     } catch (e) { next(e); }
   });
 
-  router.post('/photo', async (req, res, next) => {
+  router.post('/photo', requireAuth, async (req, res, next) => {
     try {
       const body = { photoUrl: req.body.photoUrl };
       if (!body.photoUrl) return res.status(400).json({ error: 'photoUrl required' });
@@ -83,7 +145,7 @@ export function meRouter(prisma) {
   });
 
   // Meeting Requests
-  router.get('/meeting-requests', async (req, res, next) => {
+  router.get('/meeting-requests', requireAuth, async (req, res, next) => {
     try {
       const requests = await prisma.meetingRequest.findMany({ 
         where: { userId: req.user.id },
@@ -93,7 +155,7 @@ export function meRouter(prisma) {
     } catch (e) { next(e); }
   });
 
-  router.post('/meeting-requests', async (req, res, next) => {
+  router.post('/meeting-requests', requireAuth, async (req, res, next) => {
     try {
       const { preferredDate, preferredTime, message } = req.body;
       const user = await prisma.user.findUnique({ where: { id: req.user.id } });
@@ -113,7 +175,7 @@ export function meRouter(prisma) {
   });
 
   // User-specific S3 presign for profile photo upload
-  router.post('/uploads/presign', async (req, res, next) => {
+  router.post('/uploads/presign', requireAuth, async (req, res, next) => {
     try {
       const { fileName, fileType } = req.body;
       

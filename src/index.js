@@ -14,6 +14,7 @@ import { purchasesRouter } from './routes/purchases.js';
 import { webinarsRouter } from './routes/webinars.js';
 import { announcementsRouter } from './routes/announcements.js';
 import { testimonialsRouter } from './routes/testimonials.js';
+import { youtubeVideosRouter } from './routes/youtubeVideos.js';
 import { adminRouter } from './routes/admin.js';
 import { meRouter } from './routes/me.js';
 import { courseContentRouter } from './routes/courseContent.js';
@@ -124,7 +125,8 @@ async function startServer() {
     app.use('/api/webinars', webinarsRouter(prisma));
     app.use('/api/announcements', announcementsRouter(prisma));
     app.use('/api/testimonials', testimonialsRouter(prisma));
-    app.use('/api/me', requireAuth, meRouter(prisma));
+    app.use('/api/youtube-videos', youtubeVideosRouter(prisma));
+    app.use('/api/me', meRouter(prisma));
     app.use('/api/course-content', requireAuth, courseContentRouter(prisma));
 
     // Admin scoped

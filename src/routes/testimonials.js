@@ -3,11 +3,10 @@ import express from 'express';
 export function testimonialsRouter(prisma) {
   const router = express.Router();
 
-  // Public route to get active testimonials
+  // Public route to get all testimonials
   router.get('/', async (req, res, next) => {
     try {
       const testimonials = await prisma.testimonial.findMany({ 
-        where: { isActive: true },
         select: {
           id: true,
           studentName: true,
