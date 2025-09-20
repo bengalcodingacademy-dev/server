@@ -83,7 +83,7 @@ jobs:
             npm ci
 
             # Generate Prisma client
-            npx prisma generate
+            npx prisma generate --schema=prisma/schema.prisma
 
             # Run migrations in production-safe way
             npx prisma migrate deploy
