@@ -30,6 +30,8 @@ jobs:
           key: ${{ secrets.DO_KEY }}
           source: "."
           target: "~/backend-app"
+          timeout: 300s
+          command_timeout: 300s
 
       - name: Setup and Deploy Backend on DigitalOcean
         uses: appleboy/ssh-action@v1.0.3
@@ -37,6 +39,8 @@ jobs:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_KEY }}
+          timeout: 300s
+          command_timeout: 300s
           script: |
             # Update system packages
             sudo apt-get update
