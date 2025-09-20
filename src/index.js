@@ -47,8 +47,6 @@ async function startServer() {
     app.use(cookieParser());
     app.use(cors({
       origin: [
-        'https://bca-web-microfrontend.netlify.app',
-        'https://dashing-cobbler-03a3cd.netlify.app',
         'http://localhost:5173',
         'http://localhost:5174', 
         'https://admin.bengalcodingacademy.com',
