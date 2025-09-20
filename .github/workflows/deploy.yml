@@ -120,7 +120,7 @@ jobs:
             pm2 delete backend-api || true
             
             # Create PM2 ecosystem file for better configuration
-            cat > ecosystem.config.js <<EOL
+            cat > ecosystem.config.cjs <<EOL
             module.exports = {
               apps: [{
                 name: 'backend-api',
@@ -145,7 +145,7 @@ jobs:
             mkdir -p logs
             
             # Start with ecosystem file
-            pm2 start ecosystem.config.js
+            pm2 start ecosystem.config.cjs
             pm2 save
 
             # Wait for server to be ready
@@ -154,6 +154,18 @@ jobs:
             
             # Check if server is running
             pm2 status
+            
+            # Check PM2 logs for any startup errors
+            echo "Checking PM2 logs for errors..."
+            pm2 logs backend-api --lines 20 || echo "No logs available yet"
+            
+            # Check if the port is being used
+            echo "Checking if port is in use..."
+            netstat -tlnp | grep :${{ secrets.PORT }} || echo "Port not found in netstat"
+            
+            # Check process details
+            echo "Checking process details..."
+            ps aux | grep node || echo "No node processes found"
             
             # Test server connectivity with retry logic
             echo "Testing server connectivity..."
