@@ -23,7 +23,7 @@ import { requireAuth, requireAdmin } from './middleware/auth.js';
 
 const app = express();
 
-// Initialize Prisma client with better error handling.
+// Initialize Prisma client with better error handling....
 const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
   datasources: {
