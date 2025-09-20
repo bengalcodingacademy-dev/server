@@ -28,7 +28,7 @@ jobs:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_KEY }}
-          source: "."
+          source: "server/*"
           target: "~/backend-app"
           timeout: 300s
           command_timeout: 300s
@@ -43,9 +43,9 @@ jobs:
           command_timeout: 300s
           script: |
             # Update system packages
-            sudo apt-get update
+            sudo apt-get update -y
 
-            # Install Node.js & npm if not present
+            # Install Node.js if not installed
             if ! command -v node >/dev/null 2>&1; then
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
               sudo apt-get install -y nodejs
@@ -56,17 +56,10 @@ jobs:
               sudo npm install -g pm2
             fi
 
-            # Install Nginx if not present
-            if ! command -v nginx >/dev/null 2>&1; then
-              sudo apt-get install -y nginx
-            fi
+            # Install Nginx & Certbot if not present
+            sudo apt-get install -y nginx certbot python3-certbot-nginx
 
-            # Install Certbot if not present
-            if ! command -v certbot >/dev/null 2>&1; then
-              sudo apt-get install -y certbot python3-certbot-nginx
-            fi
-
-            # Go to backend app directory
+            # Go to backend directory
             cd ~/backend-app
 
             # Write environment variables
@@ -86,26 +79,21 @@ jobs:
             S3_PUBLIC_BASE=${{ secrets.S3_PUBLIC_BASE }}
             EOL
 
-            # Install dependencies
-            npm install --production
+            # Install dependencies fresh
+            npm ci
 
-            # Run Prisma migrations
+            # Generate Prisma client
+            npx prisma generate
+
+            # Run migrations in production-safe way
             npx prisma migrate deploy
 
-            # Configure Nginx for backend API
+            # Configure Nginx
             sudo tee /etc/nginx/sites-available/api.bengalcodingacademy.com <<EOL
             server {
                 listen 80;
                 server_name api.bengalcodingacademy.com;
 
-                # Security headers
-                add_header X-Frame-Options "SAMEORIGIN" always;
-                add_header X-XSS-Protection "1; mode=block" always;
-                add_header X-Content-Type-Options "nosniff" always;
-                add_header Referrer-Policy "no-referrer-when-downgrade" always;
-                add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
-
-                # Proxy to Node.js app
                 location / {
                     proxy_pass http://localhost:${{ secrets.PORT }};
                     proxy_http_version 1.1;
@@ -115,68 +103,26 @@ jobs:
                     proxy_set_header X-Real-IP \$remote_addr;
                     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
                     proxy_set_header X-Forwarded-Proto \$scheme;
-                    proxy_cache_bypass \$http_upgrade;
-                }
-
-                # Handle WebSocket connections
-                location /socket.io/ {
-                    proxy_pass http://localhost:${{ secrets.PORT }};
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection "upgrade";
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
                 }
             }
             EOL
 
-            # Enable the site
             sudo ln -sf /etc/nginx/sites-available/api.bengalcodingacademy.com /etc/nginx/sites-enabled/
             sudo rm -f /etc/nginx/sites-enabled/default
-
-            # Test Nginx configuration
             sudo nginx -t
-
-            # Start/restart Nginx
             sudo systemctl restart nginx
-            sudo systemctl enable nginx
 
-            # Wait a moment for Nginx to start
-            sleep 5
-
-            # Obtain SSL certificate with Certbot
+            # SSL certificate
             sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
 
-            # Restart server with PM2
+            # Start app with PM2
             pm2 stop backend-api || true
             pm2 start src/index.js --name backend-api
             pm2 save
 
-            # Setup automatic certificate renewal
+            # Setup auto-renew for certs
             echo "0 12 * * * /usr/bin/certbot renew --quiet" | sudo crontab -
 
-            # Show status
-            echo "=== Backend Deployment Status ==="
+            echo "=== Backend Deployed Successfully ==="
             pm2 status
-            sudo systemctl status nginx --no-pager
-            echo "=== Backend API is now available at ==="
-            echo "HTTPS: https://api.bengalcodingacademy.com/api/health"
-            echo "HTTP: http://api.bengalcodingacademy.com/api/health (redirects to HTTPS)"
-            echo "Direct: http://${{ secrets.DO_HOST }}:${{ secrets.PORT }}/api/health"
-            echo "=== Complete Setup ==="
-            echo "🌐 Web Frontend: https://bengalcodingacademy.com (DigitalOcean)"
-            echo "🔧 Admin Frontend: https://admin.bengalcodingacademy.com (DigitalOcean)"
-            echo "⚡ Backend API: https://api.bengalcodingacademy.com (DigitalOcean)"
-            echo "=== SSL Certificate Status ==="
-            sudo certbot certificates
-
-      - name: Cleanup
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: ${{ secrets.DO_USER }}
-          key: ${{ secrets.DO_KEY }}
-          script: |
-            rm -rf ~/backend-app
+            curl -I http://localhost:${{ secrets.PORT }}/api/health
