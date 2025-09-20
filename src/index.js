@@ -98,6 +98,8 @@ async function startServer() {
 
     app.get("/api/health", async (req, res) => {
       try {
+        console.log("Sauvik Chatterjee");
+
         // Test database connection
         await prisma.$connect();
         const userCount = await prisma.user.count();
