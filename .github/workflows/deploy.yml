@@ -28,7 +28,7 @@ jobs:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_KEY }}
-          source: "server/*"
+          source: "./**"
           target: "~/backend-app"
           timeout: 300s
           command_timeout: 300s
