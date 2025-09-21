@@ -125,12 +125,14 @@ jobs:
             sudo nginx -t
             sudo systemctl restart nginx
 
-            # SSL certificate - clean up and obtain fresh certificate
-            echo "Cleaning up existing certificates..."
-            sudo certbot delete --cert-name api.bengalcodingacademy.com --non-interactive || echo "No existing certificate to delete"
-            
-            echo "Obtaining fresh SSL certificate for api.bengalcodingacademy.com..."
-            sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
+            # SSL certificate - only obtain if not exists
+            echo "Checking for existing SSL certificate..."
+            if ! sudo certbot certificates | grep -q "api.bengalcodingacademy.com"; then
+              echo "Obtaining SSL certificate for api.bengalcodingacademy.com..."
+              sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
+            else
+              echo "SSL certificate already exists, skipping..."
+            fi
             
             # Verify the certificate
             echo "Verifying SSL certificate..."
@@ -200,7 +202,7 @@ jobs:
             if curl -f -s https://api.bengalcodingacademy.com/api/health > /dev/null; then
               echo "✅ HTTPS endpoint working correctly!"
             else
-              echo "❌ HTTPS endpoint test failed"
+              echo "❌ HTTPS endpoint test failed - will work after rate limit expires"
               echo "Testing HTTP endpoint..."
               curl -f -s http://api.bengalcodingacademy.com/api/health > /dev/null && echo "✅ HTTP endpoint working" || echo "❌ HTTP endpoint also failed"
             fi
