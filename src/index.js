@@ -97,8 +97,6 @@ async function startServer() {
       res.status(204).end();
     });
 
-<<<<<<< Updated upstream
-=======
     // Razorpay status endpoint for debugging
     app.get("/api/razorpay/status", (req, res) => {
       try {
@@ -117,8 +115,6 @@ async function startServer() {
       }
     });
 
-
->>>>>>> Stashed changes
     app.get("/api/health", async (req, res) => {
       try {
         console.log("Sauvik Chatterjee");
