@@ -1,41 +1,212 @@
 import express from 'express';
 import { z } from 'zod';
+import { createOrder, verifyPayment, fetchPayment } from '../services/razorpay.js';
 
-const purchaseSchema = z.object({
+// Razorpay order creation schema
+const razorpayOrderSchema = z.object({
   courseId: z.string().uuid(),
-  upiMobile: z.string().min(8).max(20),
-  upiTxnId: z.string().min(6).max(64),
-  amountCents: z.number().int().positive(),
   isMonthlyPayment: z.boolean().optional(),
   monthNumber: z.number().int().positive().optional(),
   totalMonths: z.number().int().positive().optional()
 });
 
+// Razorpay payment verification schema
+const razorpayVerifySchema = z.object({
+  razorpayOrderId: z.string(),
+  razorpayPaymentId: z.string(),
+  razorpaySignature: z.string()
+});
+
 export function purchasesRouter(prisma) {
   const router = express.Router();
 
-  router.post('/', async (req, res, next) => {
+
+  // Create Razorpay order
+  router.post('/create-order', async (req, res, next) => {
     try {
-      const { courseId, upiMobile, upiTxnId, amountCents, isMonthlyPayment, monthNumber, totalMonths } = purchaseSchema.parse(req.body);
-      const course = await prisma.course.findUnique({ where: { id: courseId } });
-      if (!course || !course.isActive) return res.status(400).json({ error: 'Invalid course' });
+      const { courseId, isMonthlyPayment, monthNumber, totalMonths } = razorpayOrderSchema.parse(req.body);
       
+      // Get course details
+      const course = await prisma.course.findUnique({ where: { id: courseId } });
+      if (!course || !course.isActive) {
+        return res.status(400).json({ error: 'Invalid course' });
+      }
+
+      // For one-time payments, check if user already has a paid purchase
+      if (!isMonthlyPayment) {
+        const existingPurchase = await prisma.purchase.findFirst({
+          where: {
+            userId: req.user.id,
+            courseId,
+            status: 'PAID',
+            isMonthlyPayment: false
+          }
+        });
+
+        if (existingPurchase) {
+          return res.status(400).json({ error: 'You already have a purchase for this course' });
+        }
+      } else {
+        // For monthly payments, check if user already has a pending payment for the same month
+        const existingMonthlyPurchase = await prisma.purchase.findFirst({
+          where: {
+            userId: req.user.id,
+            courseId,
+            status: { in: ['PENDING', 'PAID'] },
+            isMonthlyPayment: true,
+            monthNumber: monthNumber
+          }
+        });
+
+        if (existingMonthlyPurchase) {
+          return res.status(400).json({ error: `You already have a payment for month ${monthNumber}` });
+        }
+      }
+
+      // Calculate amount
+      let amountCents;
+      if (isMonthlyPayment) {
+        amountCents = course.monthlyFeeCents || 0;
+      } else {
+        amountCents = course.priceCents;
+      }
+
+      if (amountCents <= 0) {
+        return res.status(400).json({ error: 'Invalid course price' });
+      }
+
+      // Create purchase record first
       const purchase = await prisma.purchase.create({
         data: {
           userId: req.user.id,
           courseId,
           amountCents,
           status: 'PENDING',
-          upiMobile,
-          upiTxnId,
           isMonthlyPayment: isMonthlyPayment || false,
           monthNumber,
           totalMonths
         }
       });
-      res.json(purchase);
-    } catch (e) { next(e); }
+
+      // Create Razorpay order
+      const orderData = {
+        amount: amountCents, // Amount in paise
+        currency: 'INR',
+        receipt: `p_${purchase.id.slice(-8)}`,
+        notes: {
+          purchaseId: purchase.id,
+          userId: req.user.id,
+          courseId,
+          courseTitle: course.title,
+          isMonthlyPayment: isMonthlyPayment || false,
+          monthNumber: monthNumber || null,
+          totalMonths: totalMonths || null
+        }
+      };
+
+      const razorpayOrder = await createOrder(orderData);
+
+      // Update purchase with Razorpay order ID
+      await prisma.purchase.update({
+        where: { id: purchase.id },
+        data: { razorpayOrderId: razorpayOrder.id }
+      });
+
+      res.json({
+        order: razorpayOrder,
+        purchase: {
+          id: purchase.id,
+          amountCents: purchase.amountCents,
+          isMonthlyPayment: purchase.isMonthlyPayment,
+          monthNumber: purchase.monthNumber,
+          totalMonths: purchase.totalMonths
+        }
+      });
+    } catch (e) { 
+      console.error('Error creating Razorpay order:', e);
+      next(e); 
+    }
   });
+
+  // Verify Razorpay payment
+  router.post('/verify-payment', async (req, res, next) => {
+    try {
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = razorpayVerifySchema.parse(req.body);
+
+      // Verify payment signature
+      const isValidSignature = verifyPayment(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+      
+      if (!isValidSignature) {
+        return res.status(400).json({ error: 'Invalid payment signature' });
+      }
+
+      // Get purchase record
+      const purchase = await prisma.purchase.findFirst({
+        where: {
+          razorpayOrderId,
+          userId: req.user.id,
+          status: 'PENDING'
+        },
+        include: {
+          course: {
+            select: {
+              title: true,
+              isMonthlyPayment: true
+            }
+          }
+        }
+      });
+
+      if (!purchase) {
+        return res.status(404).json({ error: 'Purchase not found' });
+      }
+
+      // Fetch payment details from Razorpay
+      const paymentDetails = await fetchPayment(razorpayPaymentId);
+
+      // Update purchase with payment details
+      const updatedPurchase = await prisma.purchase.update({
+        where: { id: purchase.id },
+        data: {
+          status: 'PAID',
+          razorpayPaymentId,
+          razorpaySignature,
+          updatedAt: new Date()
+        },
+        include: {
+          course: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              imageUrl: true,
+              shortDesc: true,
+              isMonthlyPayment: true,
+              durationMonths: true,
+              monthlyFeeCents: true,
+              priceCents: true
+            }
+          }
+        }
+      });
+
+      res.json({
+        success: true,
+        purchase: updatedPurchase,
+        paymentDetails: {
+          id: paymentDetails.id,
+          amount: paymentDetails.amount,
+          currency: paymentDetails.currency,
+          status: paymentDetails.status,
+          method: paymentDetails.method
+        }
+      });
+    } catch (e) { 
+      console.error('Error verifying payment:', e);
+      next(e); 
+    }
+  });
+
 
   router.get('/me', async (req, res, next) => {
     try {

@@ -89,13 +89,19 @@ model Purchase {
   courseId     String
   amountCents  Int
   status       String
+  // Legacy UPI fields (deprecated)
   upiMobile    String?
   upiTxnId     String?
+  // Razorpay fields
+  razorpayOrderId String?
+  razorpayPaymentId String?
+  razorpaySignature String?
   // Monthly payment fields
   isMonthlyPayment Boolean @default(false)
   monthNumber  Int?      // For monthly payments: 1, 2, 3, etc.
   totalMonths  Int?      // Total months for the course
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   user         User     @relation(fields: [userId], references: [id])
   course       Course   @relation(fields: [courseId], references: [id])
 
@@ -104,6 +110,8 @@ model Purchase {
   @@index([courseId])
   @@index([status])
   @@index([userId, status])
+  @@index([razorpayOrderId])
+  @@index([razorpayPaymentId])
 }
 
 model MonthlyPurchase {

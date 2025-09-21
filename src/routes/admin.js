@@ -200,67 +200,6 @@ export function adminRouter(prisma) {
     } catch (e) { next(e); }
   });
 
-  router.post('/purchases/:id/approve', async (req, res, next) => {
-    try {
-      const id = req.params.id;
-      
-      // Get the purchase with course details
-      const purchase = await prisma.purchase.findUnique({
-        where: { id },
-        include: { course: true, user: true }
-      });
-      
-      if (!purchase) {
-        return res.status(404).json({ error: 'Purchase not found' });
-      }
-      
-      // Check if purchase is already processed
-      if (purchase.status === 'PAID') {
-        return res.status(400).json({ error: 'Purchase already approved' });
-      }
-      
-      if (purchase.status === 'DECLINED') {
-        return res.status(400).json({ error: 'Purchase already declined' });
-      }
-      
-      // Update the purchase status to PAID
-      const updatedPurchase = await prisma.purchase.update({ 
-        where: { id }, 
-        data: { status: 'PAID' } 
-      });
-      
-      // No automatic payment request creation - user will manually pay for next month
-      
-      res.json(updatedPurchase);
-    } catch (e) { next(e); }
-  });
-
-  router.post('/purchases/:id/decline', async (req, res, next) => {
-    try {
-      const id = req.params.id;
-      
-      // Get the purchase first to check status
-      const purchase = await prisma.purchase.findUnique({
-        where: { id }
-      });
-      
-      if (!purchase) {
-        return res.status(404).json({ error: 'Purchase not found' });
-      }
-      
-      // Check if purchase is already processed
-      if (purchase.status === 'PAID') {
-        return res.status(400).json({ error: 'Purchase already approved' });
-      }
-      
-      if (purchase.status === 'DECLINED') {
-        return res.status(400).json({ error: 'Purchase already declined' });
-      }
-      
-      const p = await prisma.purchase.update({ where: { id }, data: { status: 'DECLINED' } });
-      res.json(p);
-    } catch (e) { next(e); }
-  });
 
   // Webinars
   router.post('/webinars', async (req, res, next) => {
@@ -355,10 +294,166 @@ export function adminRouter(prisma) {
       const result = Array.from({ length: 12 }, (_, i) => {
         const m = i + 1;
         const row = Array.isArray(rows) ? rows.find(r => Number(r.month) === m) : null;
-        return { month: m, totalRevenueCents: row ? Number(row.revenue) : 0, totalOrders: row ? Number(row.orders) : 0 };
+        return { 
+          month: m, 
+          totalAmount: row ? Number(row.revenue) / 100 : 0, // Convert to rupees
+          orderCount: row ? Number(row.orders) : 0 
+        };
       });
       res.json(result);
     } catch (e) { next(e); }
+  });
+
+  router.get('/stats/daily-sales', async (req, res, next) => {
+    try {
+      const year = parseInt(req.query.year, 10);
+      const month = parseInt(req.query.month, 10);
+      if (!year || !month || Number.isNaN(year) || Number.isNaN(month)) {
+        return res.status(400).json({ error: 'Invalid year or month' });
+      }
+      
+      const start = new Date(`${year}-${month.toString().padStart(2, '0')}-01T00:00:00.000Z`);
+      const end = new Date(year, month, 0, 23, 59, 59, 999); // Last day of month
+      
+      const rows = await prisma.$queryRawUnsafe(`
+        SELECT EXTRACT(DAY FROM "createdAt") AS day, SUM("amountCents") AS revenue, COUNT(*) AS orders
+        FROM "Purchase"
+        WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND status = 'PAID'
+        GROUP BY day ORDER BY day;
+      `, start, end);
+      
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const result = Array.from({ length: daysInMonth }, (_, i) => {
+        const day = i + 1;
+        const row = Array.isArray(rows) ? rows.find(r => Number(r.day) === day) : null;
+        return { 
+          day: day, 
+          totalAmount: row ? Number(row.revenue) / 100 : 0, // Convert to rupees
+          orderCount: row ? Number(row.orders) : 0 
+        };
+      });
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
+  router.get('/stats/yearly-sales', async (req, res, next) => {
+    try {
+      const rows = await prisma.$queryRawUnsafe(`
+        SELECT EXTRACT(YEAR FROM "createdAt") AS year, SUM("amountCents") AS revenue, COUNT(*) AS orders
+        FROM "Purchase"
+        WHERE status = 'PAID'
+        GROUP BY year ORDER BY year;
+      `);
+      
+      const result = Array.isArray(rows) ? rows.map(row => ({
+        year: Number(row.year),
+        totalAmount: Number(row.revenue) / 100, // Convert to rupees
+        orderCount: Number(row.orders)
+      })) : [];
+      
+      res.json(result);
+    } catch (e) { next(e); }
+  });
+
+  // Get detailed payments for specific date
+  router.get('/stats/payments-by-date', async (req, res, next) => {
+    try {
+      const { year, month, day } = req.query;
+      
+      if (!year || Number.isNaN(parseInt(year))) {
+        return res.status(400).json({ error: 'Invalid year' });
+      }
+
+      let startDate, endDate;
+      
+      if (day && month) {
+        // Specific day
+        const dayNum = parseInt(day);
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+        
+        if (Number.isNaN(dayNum) || Number.isNaN(monthNum)) {
+          return res.status(400).json({ error: 'Invalid day or month' });
+        }
+        
+        startDate = new Date(`${yearNum}-${monthNum.toString().padStart(2, '0')}-${dayNum.toString().padStart(2, '0')}T00:00:00.000Z`);
+        endDate = new Date(`${yearNum}-${monthNum.toString().padStart(2, '0')}-${dayNum.toString().padStart(2, '0')}T23:59:59.999Z`);
+      } else if (month) {
+        // Specific month
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+        
+        if (Number.isNaN(monthNum)) {
+          return res.status(400).json({ error: 'Invalid month' });
+        }
+        
+        startDate = new Date(`${yearNum}-${monthNum.toString().padStart(2, '0')}-01T00:00:00.000Z`);
+        endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999); // Last day of month
+      } else {
+        // Specific year
+        const yearNum = parseInt(year);
+        startDate = new Date(`${yearNum}-01-01T00:00:00.000Z`);
+        endDate = new Date(`${yearNum + 1}-01-01T00:00:00.000Z`);
+      }
+
+      const payments = await prisma.purchase.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate
+          },
+          status: 'PAID'
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          course: {
+            select: {
+              id: true,
+              title: true,
+              isMonthlyPayment: true,
+              durationMonths: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      const result = payments.map(payment => ({
+        id: payment.id,
+        amount: payment.amountCents / 100, // Convert to rupees
+        status: payment.status,
+        isMonthlyPayment: payment.isMonthlyPayment,
+        monthNumber: payment.monthNumber,
+        totalMonths: payment.totalMonths,
+        createdAt: payment.createdAt,
+        razorpayOrderId: payment.razorpayOrderId,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        user: {
+          id: payment.user.id,
+          name: payment.user.name,
+          email: payment.user.email
+        },
+        course: {
+          id: payment.course.id,
+          title: payment.course.title,
+          isMonthlyPayment: payment.course.isMonthlyPayment,
+          durationMonths: payment.course.durationMonths
+        }
+      }));
+
+      res.json(result);
+    } catch (e) { 
+      console.error('Error fetching payments by date:', e);
+      next(e); 
+    }
   });
 
   // Users list (read-only)
