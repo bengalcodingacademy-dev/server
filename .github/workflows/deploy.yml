@@ -125,20 +125,9 @@ jobs:
             sudo nginx -t
             sudo systemctl restart nginx
 
-            # SSL certificate - only obtain if not exists
-            echo "Checking for existing SSL certificate..."
-            if ! sudo certbot certificates | grep -q "api.bengalcodingacademy.com"; then
-              echo "Obtaining SSL certificate for api.bengalcodingacademy.com..."
-              sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email ${{ secrets.EMAIL }} --redirect
-            else
-              echo "SSL certificate already exists, skipping..."
-            fi
-            
-            # Verify the certificate
-            echo "Verifying SSL certificate..."
-            sudo certbot certificates
-            echo "Testing HTTPS connection..."
-            curl -I https://api.bengalcodingacademy.com/api/health || echo "HTTPS test failed - will retry after deployment"
+            # Skip SSL certificate management - certificates are managed separately
+            echo "Skipping SSL certificate management to avoid rate limits..."
+            echo "SSL certificates should be managed manually or through separate process"
 
             # Start app with PM2
             pm2 stop backend-api || true
@@ -193,18 +182,13 @@ jobs:
             # Setup auto-renew for certs
             echo "0 12 * * * /usr/bin/certbot renew --quiet" | sudo crontab -
 
-            # Final SSL verification
-            echo "Final SSL certificate verification..."
-            echo "Certificate details:"
-            sudo certbot certificates | grep -A 10 "api.bengalcodingacademy.com" || echo "Certificate not found"
-            
-            echo "Testing HTTPS endpoint..."
-            if curl -f -s https://api.bengalcodingacademy.com/api/health > /dev/null; then
-              echo "✅ HTTPS endpoint working correctly!"
+            # Final health check
+            echo "Final health check..."
+            echo "Testing HTTP endpoint..."
+            if curl -f -s http://api.bengalcodingacademy.com/api/health > /dev/null; then
+              echo "✅ HTTP endpoint working correctly!"
             else
-              echo "❌ HTTPS endpoint test failed - will work after rate limit expires"
-              echo "Testing HTTP endpoint..."
-              curl -f -s http://api.bengalcodingacademy.com/api/health > /dev/null && echo "✅ HTTP endpoint working" || echo "❌ HTTP endpoint also failed"
+              echo "❌ HTTP endpoint test failed"
             fi
 
             echo "=== Backend Deployed Successfully ==="
