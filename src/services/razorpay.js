@@ -1,0 +1,114 @@
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+
+// Initialize Razorpay instance
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+/**
+ * Create a Razorpay order
+ * @param {Object} orderData - Order details
+ * @param {number} orderData.amount - Amount in paise (smallest currency unit)
+ * @param {string} orderData.currency - Currency code (default: INR)
+ * @param {string} orderData.receipt - Receipt ID
+ * @param {Object} orderData.notes - Additional notes
+ * @returns {Promise<Object>} Razorpay order object
+ */
+export const createOrder = async (orderData) => {
+  try {
+    const options = {
+      amount: orderData.amount, // Amount in paise
+      currency: orderData.currency || 'INR',
+      receipt: orderData.receipt,
+      notes: orderData.notes || {},
+    };
+
+    const order = await razorpay.orders.create(options);
+    return order;
+  } catch (error) {
+    console.error('Error creating Razorpay order:', error);
+    throw new Error(`Failed to create order: ${error.message}`);
+  }
+};
+
+/**
+ * Verify Razorpay payment signature
+ * @param {string} razorpayOrderId - Razorpay order ID
+ * @param {string} razorpayPaymentId - Razorpay payment ID
+ * @param {string} razorpaySignature - Razorpay signature
+ * @returns {boolean} Whether the signature is valid
+ */
+export const verifyPayment = (razorpayOrderId, razorpayPaymentId, razorpaySignature) => {
+  try {
+    const body = razorpayOrderId + '|' + razorpayPaymentId;
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest('hex');
+
+    return expectedSignature === razorpaySignature;
+  } catch (error) {
+    console.error('Error verifying payment signature:', error);
+    return false;
+  }
+};
+
+/**
+ * Fetch payment details from Razorpay
+ * @param {string} paymentId - Razorpay payment ID
+ * @returns {Promise<Object>} Payment details
+ */
+export const fetchPayment = async (paymentId) => {
+  try {
+    const payment = await razorpay.payments.fetch(paymentId);
+    return payment;
+  } catch (error) {
+    console.error('Error fetching payment:', error);
+    throw new Error(`Failed to fetch payment: ${error.message}`);
+  }
+};
+
+/**
+ * Fetch order details from Razorpay
+ * @param {string} orderId - Razorpay order ID
+ * @returns {Promise<Object>} Order details
+ */
+export const fetchOrder = async (orderId) => {
+  try {
+    const order = await razorpay.orders.fetch(orderId);
+    return order;
+  } catch (error) {
+    console.error('Error fetching order:', error);
+    throw new Error(`Failed to fetch order: ${error.message}`);
+  }
+};
+
+/**
+ * Refund a payment
+ * @param {string} paymentId - Razorpay payment ID
+ * @param {number} amount - Amount to refund in paise (optional, defaults to full amount)
+ * @param {string} notes - Refund notes
+ * @returns {Promise<Object>} Refund details
+ */
+export const refundPayment = async (paymentId, amount = null, notes = '') => {
+  try {
+    const refundData = {
+      payment_id: paymentId,
+      notes: notes,
+    };
+
+    if (amount) {
+      refundData.amount = amount;
+    }
+
+    const refund = await razorpay.payments.refund(paymentId, refundData);
+    return refund;
+  } catch (error) {
+    console.error('Error processing refund:', error);
+    throw new Error(`Failed to process refund: ${error.message}`);
+  }
+};
+
+export default razorpay;
