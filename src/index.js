@@ -104,17 +104,16 @@ async function startServer() {
         res.json({
           success: true,
           ...status,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       } catch (error) {
         res.status(500).json({
           success: false,
           error: error.message,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       }
     });
-
 
     app.get("/api/health", async (req, res) => {
       try {
