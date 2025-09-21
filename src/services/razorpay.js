@@ -152,6 +152,10 @@ export const fetchOrder = async (orderId) => {
   }
 };
 
+export const sauvikRazorpay = async (orderData) => {
+  console.log("sauvikRazorpay", orderData);
+}
+
 /**
  * Refund a payment
  * @param {string} paymentId - Razorpay payment ID
