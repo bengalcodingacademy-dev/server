@@ -15,26 +15,6 @@ const getRazorpayInstance = () => {
   return razorpay;
 };
 
-/**
- * Check if Razorpay is properly configured
- * @returns {boolean} - True if Razorpay is configured
- */
-export const isRazorpayConfigured = () => {
-  return !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
-};
-
-/**
- * Get Razorpay configuration status
- * @returns {Object} - Configuration status object
- */
-export const getRazorpayStatus = () => {
-  return {
-    configured: isRazorpayConfigured(),
-    hasKeyId: !!process.env.RAZORPAY_KEY_ID,
-    hasKeySecret: !!process.env.RAZORPAY_KEY_SECRET,
-    instance: !!getRazorpayInstance()
-  };
-};
 
 /**
  * Create a Razorpay order
