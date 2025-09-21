@@ -20,6 +20,7 @@ import { meRouter } from "./routes/me.js";
 import { courseContentRouter } from "./routes/courseContent.js";
 
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
+import { getRazorpayStatus } from "./services/razorpay.js";
 
 const app = express();
 
@@ -96,6 +97,24 @@ async function startServer() {
       res.status(204).end();
     });
 
+    // Razorpay status endpoint for debugging
+    app.get("/api/razorpay/status", (req, res) => {
+      try {
+        const status = getRazorpayStatus();
+        res.json({
+          success: true,
+          ...status,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     app.get("/api/health", async (req, res) => {
       try {
         console.log("Sauvik Chatterjee");
@@ -115,6 +134,7 @@ async function startServer() {
           userCount,
           env: process.env.NODE_ENV || "development",
           prismaStatus: prisma ? "INITIALIZED" : "NOT_INITIALIZED",
+          razorpay: getRazorpayStatus(),
         });
       } catch (error) {
         console.error("Health check failed:", error);
