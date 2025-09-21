@@ -2,6 +2,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
 // Initialize Razorpay instance only if keys are provided
+// Updated: Added lazy initialization to prevent startup errors
 let razorpay = null;
 
 const getRazorpayInstance = () => {
