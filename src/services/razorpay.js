@@ -1,11 +1,18 @@
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
-// Initialize Razorpay instance
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// Initialize Razorpay instance only if keys are provided
+let razorpay = null;
+
+const getRazorpayInstance = () => {
+  if (!razorpay && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+    razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  }
+  return razorpay;
+};
 
 /**
  * Create a Razorpay order
@@ -18,6 +25,13 @@ const razorpay = new Razorpay({
  */
 export const createOrder = async (orderData) => {
   try {
+    const razorpayInstance = getRazorpayInstance();
+    if (!razorpayInstance) {
+      console.log("Razorpay not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.");
+      
+      throw new Error('Razorpay not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.');
+    }
+    
     const options = {
       amount: orderData.amount, // Amount in paise
       currency: orderData.currency || 'INR',
@@ -25,7 +39,7 @@ export const createOrder = async (orderData) => {
       notes: orderData.notes || {},
     };
 
-    const order = await razorpay.orders.create(options);
+    const order = await razorpayInstance.orders.create(options);
     return order;
   } catch (error) {
     console.error('Error creating Razorpay order:', error);
@@ -42,6 +56,11 @@ export const createOrder = async (orderData) => {
  */
 export const verifyPayment = (razorpayOrderId, razorpayPaymentId, razorpaySignature) => {
   try {
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      console.error('RAZORPAY_KEY_SECRET not configured');
+      return false;
+    }
+    
     const body = razorpayOrderId + '|' + razorpayPaymentId;
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
@@ -62,7 +81,12 @@ export const verifyPayment = (razorpayOrderId, razorpayPaymentId, razorpaySignat
  */
 export const fetchPayment = async (paymentId) => {
   try {
-    const payment = await razorpay.payments.fetch(paymentId);
+    const razorpayInstance = getRazorpayInstance();
+    if (!razorpayInstance) {
+      throw new Error('Razorpay not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.');
+    }
+    
+    const payment = await razorpayInstance.payments.fetch(paymentId);
     return payment;
   } catch (error) {
     console.error('Error fetching payment:', error);
@@ -77,7 +101,12 @@ export const fetchPayment = async (paymentId) => {
  */
 export const fetchOrder = async (orderId) => {
   try {
-    const order = await razorpay.orders.fetch(orderId);
+    const razorpayInstance = getRazorpayInstance();
+    if (!razorpayInstance) {
+      throw new Error('Razorpay not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.');
+    }
+    
+    const order = await razorpayInstance.orders.fetch(orderId);
     return order;
   } catch (error) {
     console.error('Error fetching order:', error);
@@ -94,6 +123,11 @@ export const fetchOrder = async (orderId) => {
  */
 export const refundPayment = async (paymentId, amount = null, notes = '') => {
   try {
+    const razorpayInstance = getRazorpayInstance();
+    if (!razorpayInstance) {
+      throw new Error('Razorpay not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.');
+    }
+    
     const refundData = {
       payment_id: paymentId,
       notes: notes,
@@ -103,7 +137,7 @@ export const refundPayment = async (paymentId, amount = null, notes = '') => {
       refundData.amount = amount;
     }
 
-    const refund = await razorpay.payments.refund(paymentId, refundData);
+    const refund = await razorpayInstance.payments.refund(paymentId, refundData);
     return refund;
   } catch (error) {
     console.error('Error processing refund:', error);
@@ -111,4 +145,4 @@ export const refundPayment = async (paymentId, amount = null, notes = '') => {
   }
 };
 
-export default razorpay;
+export default getRazorpayInstance;
