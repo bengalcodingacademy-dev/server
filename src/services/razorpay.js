@@ -15,8 +15,6 @@ const getRazorpayInstance = () => {
   return razorpay;
 };
 
-<<<<<<< Updated upstream
-=======
 /**
  * Check if Razorpay is properly configured
  * @returns {boolean} - True if Razorpay is configured
@@ -38,8 +36,7 @@ export const getRazorpayStatus = () => {
   };
 };
 
-
->>>>>>> Stashed changes
+      
 /**
  * Create a Razorpay order
  * @param {Object} orderData - Order details
