@@ -7,103 +7,87 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Note: When using CloudFront + private S3, ensure your CloudFront distribution
-// uses an Origin Access Control (OAC) and your bucket policy allows that OAC.
-
 model User {
-  id            String                 @id @default(uuid())
-  name          String
-  email         String                 @unique
-  passwordHash  String
-  role          Role                   @default(STUDENT)
-  age           Int?
-  dateOfBirth   DateTime?
-  emailVerifiedAt DateTime?
-  otpCode       String?
-  otpExpiresAt  DateTime?
-  photoUrl      String?
-  resetToken    String?
-  resetTokenExp DateTime?
-  createdAt     DateTime               @default(now())
-  purchases     Purchase[]
+  id               String                @id @default(uuid())
+  name             String
+  email            String                @unique
+  passwordHash     String
+  role             Role                  @default(STUDENT)
+  createdAt        DateTime              @default(now())
+  age              Int?
+  resetToken       String?
+  resetTokenExp    DateTime?
+  dateOfBirth      DateTime?
+  emailVerifiedAt  DateTime?
+  otpCode          String?
+  otpExpiresAt     DateTime?
+  photoUrl         String?
+  meetingRequests  MeetingRequest[]
   monthlyPurchases MonthlyPurchase[]
-  notifications NotificationReceipt[]
-  meetingRequests MeetingRequest[]
+  notifications    NotificationReceipt[]
+  purchases        Purchase[]
 
   @@index([role])
   @@index([createdAt])
   @@index([emailVerifiedAt])
 }
 
-
-enum Role {
-  USER
-  ADMIN
-  INSTRUCTOR
-  STUDENT
-}
-
 model Course {
-  id           String    @id @default(uuid())
-  title        String
-  slug         String    @unique
-  imageUrl     String?
-  priceCents   Int
-  shortDesc    String
-  longDesc     String
-  duration     String?
-  startDate    DateTime?
-  endDate      DateTime?
-  roadmapJson  Json?
-  syllabusJson Json?
-  // New fields for enhanced course management
-  numberOfModules Int?
-  modulesJson  Json?     // Key-value pairs for module names and content
+  id               String            @id @default(uuid())
+  title            String
+  slug             String            @unique
+  imageUrl         String?
+  priceCents       Int
+  shortDesc        String
+  longDesc         String
+  duration         String?
+  startDate        DateTime?
+  roadmapJson      Json?
+  syllabusJson     Json?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  aboutCourse      String?
+  courseIncludes   Json?
+  endDate          DateTime?
+  language         String            @default("bengali")
+  modulesJson      Json?
   numberOfLectures Int?
-  language     String    @default("bengali") // english, hindi, bengali
-  starRating   Float?    @default(0.0)
-  numberOfStudents Int?  @default(0)
-  aboutCourse  String?   // Rich text content
-  courseIncludes Json?   // Array of course inclusions
-  // Monthly payment fields
-  durationMonths Int?    // Number of months for the course
-  monthlyFeeCents Int?   // Monthly fee in cents
-  isMonthlyPayment Boolean @default(false) // Whether course uses monthly payment
-  testimonials Testimonial[]
-  announcements Announcement[]
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  purchases    Purchase[]
+  numberOfModules  Int?
+  numberOfStudents Int?              @default(0)
+  starRating       Float?            @default(0.0)
+  durationMonths   Int?
+  isMonthlyPayment Boolean           @default(false)
+  monthlyFeeCents  Int?
+  announcements    Announcement[]
+  coupons          Coupon[]
   monthlyPurchases MonthlyPurchase[]
-  coupons      Coupon[]
-  content      CourseContent[]
+  purchases        Purchase[]
+  testimonials     Testimonial[]
+  content          CourseContent[]
 
   @@index([isActive])
   @@index([slug])
 }
 
 model Purchase {
-  id           String   @id @default(uuid())
-  userId       String
-  courseId     String
-  amountCents  Int
-  status       String
-  // Legacy UPI fields (deprecated)
-  upiMobile    String?
-  upiTxnId     String?
-  // Razorpay fields
-  razorpayOrderId String?
+  id                String   @id @default(uuid())
+  userId            String
+  courseId          String
+  amountCents       Int
+  status            String
+  createdAt         DateTime @default(now())
+  upiMobile         String?
+  upiTxnId          String?
+  isMonthlyPayment  Boolean  @default(false)
+  monthNumber       Int?
+  totalMonths       Int?
+  razorpayOrderId   String?
   razorpayPaymentId String?
   razorpaySignature String?
-  // Monthly payment fields
-  isMonthlyPayment Boolean @default(false)
-  monthNumber  Int?      // For monthly payments: 1, 2, 3, etc.
-  totalMonths  Int?      // Total months for the course
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id])
-  course       Course   @relation(fields: [courseId], references: [id])
+  updatedAt         DateTime @default(now()) @updatedAt
+  course            Course   @relation(fields: [courseId], references: [id])
+  user              User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([userId, createdAt])
@@ -115,19 +99,19 @@ model Purchase {
 }
 
 model MonthlyPurchase {
-  id           String   @id @default(uuid())
-  userId       String
-  courseId     String
-  monthNumber  Int      // 1, 2, 3, etc. for which month this payment is for
-  amountCents  Int      // Monthly fee amount
-  status       String   // PENDING, PAID, OVERDUE
-  upiMobile    String?
-  upiTxnId     String?
-  dueDate      DateTime // When this month's payment is due
-  paidAt       DateTime? // When payment was completed
-  createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id])
-  course       Course   @relation(fields: [courseId], references: [id])
+  id          String    @id @default(uuid())
+  userId      String
+  courseId    String
+  monthNumber Int
+  amountCents Int
+  status      String
+  upiMobile   String?
+  upiTxnId    String?
+  dueDate     DateTime
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  course      Course    @relation(fields: [courseId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([courseId])
@@ -144,34 +128,34 @@ model Webinar {
   presenter   String?
   startTime   DateTime
   joinLink    String?
-  imageUrl    String?
   createdAt   DateTime @default(now())
+  imageUrl    String?
 
   @@index([startTime])
   @@index([createdAt])
 }
 
 model Announcement {
-  id        String   @id @default(uuid())
+  id        String                @id @default(uuid())
   title     String
   body      String
+  createdAt DateTime              @default(now())
   courseId  String?
-  createdAt DateTime @default(now())
+  course    Course?               @relation(fields: [courseId], references: [id])
   receipts  NotificationReceipt[]
-  course    Course?  @relation(fields: [courseId], references: [id])
 
   @@index([courseId])
   @@index([createdAt])
 }
 
 model NotificationReceipt {
-  id             String        @id @default(uuid())
+  id             String       @id @default(uuid())
   userId         String
   announcementId String
-  isRead         Boolean       @default(false)
-  createdAt      DateTime      @default(now())
-  user           User          @relation(fields: [userId], references: [id])
-  announcement   Announcement  @relation(fields: [announcementId], references: [id])
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  announcement   Announcement @relation(fields: [announcementId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([userId, isRead])
@@ -179,29 +163,29 @@ model NotificationReceipt {
 }
 
 model Coupon {
-  id          String   @id @default(uuid())
-  code        String   @unique
+  id              String   @id @default(uuid())
+  code            String   @unique
   discountPercent Int
-  courseId    String
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  course      Course   @relation(fields: [courseId], references: [id])
+  courseId        String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  course          Course   @relation(fields: [courseId], references: [id])
 
   @@index([courseId])
   @@index([isActive])
 }
 
 model Testimonial {
-  id        String   @id @default(uuid())
-  studentName String
+  id           String   @id @default(uuid())
+  studentName  String
   studentImage String?
-  studentAbout String? // About the student
-  comment   String
-  rating    Int      // 1-5 stars
-  courseId  String?  // Link to course (optional)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  course    Course?  @relation(fields: [courseId], references: [id])
+  comment      String
+  rating       Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  courseId     String?
+  studentAbout String?
+  course       Course?  @relation(fields: [courseId], references: [id])
 
   @@index([courseId])
   @@index([isActive])
@@ -209,22 +193,65 @@ model Testimonial {
 }
 
 model MeetingRequest {
-  id          String   @id @default(uuid())
-  userId      String
-  studentName String
-  studentEmail String
+  id            String        @id @default(uuid())
+  userId        String
+  studentName   String
+  studentEmail  String
   preferredDate DateTime
   preferredTime String
-  message     String?
-  status      MeetingStatus @default(PENDING)
-  adminMessage String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id])
+  message       String?
+  status        MeetingStatus @default(PENDING)
+  adminMessage  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+}
+
+model CourseContent {
+  id          String   @id @default(cuid())
+  courseId    String
+  monthNumber Int
+  topicName   String
+  videoLink   String?
+  githubRepo  String?
+  notes       String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([courseId, monthNumber])
+  @@index([courseId, monthNumber, order])
+  @@map("course_content")
+}
+
+model YouTubeVideo {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?
+  videoUrl     String
+  thumbnailUrl String?
+  duration     String?
+  order        Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([order])
+  @@index([createdAt])
+}
+
+enum Role {
+  USER
+  ADMIN
+  INSTRUCTOR
+  STUDENT
 }
 
 enum MeetingStatus {
@@ -232,42 +259,3 @@ enum MeetingStatus {
   APPROVED
   DECLINED
 }
-
-model CourseContent {
-  id          String   @id @default(cuid())
-  courseId    String
-  monthNumber Int      // Which month this content belongs to (1, 2, 3, etc.)
-  topicName   String   // Name of the topic/section
-  videoLink   String?  // Link to video recording
-  githubRepo  String?  // Link to GitHub repository
-  notes       String?  // Additional notes/content
-  order       Int      @default(0) // Order of topics within the month
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  @@index([courseId])
-  @@index([courseId, monthNumber])
-  @@index([courseId, monthNumber, order])
-
-  @@map("course_content")
-}
-
-model YouTubeVideo {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  videoUrl    String   // YouTube video URL
-  thumbnailUrl String? // YouTube thumbnail URL
-  duration    String?  // Video duration
-  order       Int      @default(0) // For ordering videos
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([isActive])
-  @@index([order])
-  @@index([createdAt])
-}
-

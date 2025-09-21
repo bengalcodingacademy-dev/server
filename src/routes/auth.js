@@ -30,28 +30,70 @@ export function authRouter(prisma) {
   router.post('/register', async (req, res, next) => {
     try {
       const { name, email, password, dateOfBirth } = registerSchema.parse(req.body);
+      
+      // Check if user already exists (verified or unverified)
       const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) return res.status(400).json({ error: 'Email already registered' });
-      const passwordHash = await bcrypt.hash(password, 10);
-      let age = null;
-      if (dateOfBirth) {
-        const dob = new Date(dateOfBirth);
-        const diff = Date.now() - dob.getTime();
-        const ageDate = new Date(diff);
-        age = Math.abs(ageDate.getUTCFullYear() - 1970);
+      if (existing) {
+        if (existing.emailVerifiedAt) {
+          return res.status(400).json({ error: 'Email already registered' });
+        } else {
+          // User exists but not verified, delete the old record and create new verification
+          await prisma.user.delete({ where: { id: existing.id } });
+        }
       }
+      
+      // Generate verification token
       const token = Math.floor(100000 + Math.random()*900000).toString();
       const exp = new Date(Date.now() + 15*60*1000);
-      const user = await prisma.user.create({ data: { name, email, passwordHash, role: 'STUDENT', dateOfBirth: new Date(dateOfBirth), age, otpCode: token, otpExpiresAt: exp } });
+      
+      // Store verification data temporarily (not as a full user)
+      const verificationData = {
+        name,
+        email,
+        passwordHash: await bcrypt.hash(password, 10),
+        dateOfBirth: new Date(dateOfBirth),
+        age: (() => {
+          const dob = new Date(dateOfBirth);
+          const diff = Date.now() - dob.getTime();
+          const ageDate = new Date(diff);
+          return Math.abs(ageDate.getUTCFullYear() - 1970);
+        })(),
+        otpCode: token,
+        otpExpiresAt: exp,
+        role: 'STUDENT'
+      };
+      
+      // Store verification data first
+      const tempUser = await prisma.user.create({ 
+        data: { 
+          ...verificationData,
+          emailVerifiedAt: null // Explicitly set as unverified
+        } 
+      });
+      
+      // Send verification email asynchronously (don't wait for it)
       if (process.env.SMTP_USER) {
-        await transporter.sendMail({
+        // Send email in background - don't await it
+        transporter.sendMail({
           to: email,
           from: process.env.MAIL_FROM || process.env.SMTP_USER,
           subject: 'Verify your email - Bengal Coding Academy',
           html: `<p>Your verification code is <b>${token}</b>. It expires in 15 minutes.</p>`
+        }).catch(err => {
+          console.error('Failed to send verification email:', err);
+          console.log('FALLBACK: Verification code for', email, 'is:', token);
         });
+      } else {
+        console.log('SMTP not configured - verification code for', email, 'is:', token);
       }
-      res.json({ id: user.id, name: user.name, email: user.email, needsEmailVerification: true });
+      
+      // Respond immediately without waiting for email
+      res.json({ 
+        id: tempUser.id, 
+        name: tempUser.name, 
+        email: tempUser.email, 
+        needsEmailVerification: true 
+      });
     } catch (e) {
       next(e);
     }
@@ -62,9 +104,16 @@ export function authRouter(prisma) {
       const { email, password } = loginSchema.parse(req.body);
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+      
+      // Check if user is verified
+      if (!user.emailVerifiedAt) {
+        return res.status(403).json({ 
+          error: 'Please verify your email to continue. Check your inbox for the verification code.' 
+        });
+      }
+      
       const ok = await bcrypt.compare(password, user.passwordHash);
       if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-      if (!user.emailVerifiedAt) return res.status(403).json({ error: 'Please verify your email to continue.' });
       
       // Set different token expiration for admin users
       const tokenExpiration = user.role === 'ADMIN' ? '8h' : '1h';
@@ -101,8 +150,34 @@ export function authRouter(prisma) {
       const user = await prisma.user.findUnique({ where: { email: body.email } });
       if (!user || !user.otpCode || !user.otpExpiresAt) return res.status(400).json({ error: 'Invalid code' });
       if (user.otpCode !== body.code || user.otpExpiresAt < new Date()) return res.status(400).json({ error: 'Invalid or expired code' });
-      const updated = await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date(), otpCode: null, otpExpiresAt: null } });
+      
+      // Only now do we fully activate the user by setting emailVerifiedAt
+      const updated = await prisma.user.update({ 
+        where: { id: user.id }, 
+        data: { 
+          emailVerifiedAt: new Date(), 
+          otpCode: null, 
+          otpExpiresAt: null 
+        } 
+      });
+      
       res.json({ ok: true, email: updated.email });
+    } catch (e) { next(e); }
+  });
+
+  // Cleanup unverified users (call this periodically)
+  router.post('/cleanup-unverified', async (req, res, next) => {
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const deleted = await prisma.user.deleteMany({
+        where: {
+          emailVerifiedAt: null,
+          createdAt: {
+            lt: oneDayAgo
+          }
+        }
+      });
+      res.json({ deleted: deleted.count });
     } catch (e) { next(e); }
   });
 
