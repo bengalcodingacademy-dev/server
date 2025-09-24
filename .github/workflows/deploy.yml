@@ -122,7 +122,18 @@ jobs:
 
             sudo ln -sf /etc/nginx/sites-available/api.bengalcodingacademy.com /etc/nginx/sites-enabled/
             sudo rm -f /etc/nginx/sites-enabled/default
-            sudo nginx -t
+            
+            # Fix any existing Nginx configuration issues
+            echo "Fixing Nginx configuration issues..."
+            sudo sed -i 's/gzip_proxied expired no-cache no-store private must-revalidate auth;/gzip_proxied expired no-cache no-store private auth;/' /etc/nginx/sites-enabled/*.com 2>/dev/null || true
+            
+            # Test Nginx configuration
+            if ! sudo nginx -t; then
+                echo "Nginx configuration test failed. Attempting to fix..."
+                sudo sed -i 's/must-revalidate auth/auth/g' /etc/nginx/sites-enabled/*.com 2>/dev/null || true
+                sudo nginx -t
+            fi
+            
             sudo systemctl restart nginx
 
             # Skip SSL certificate management - certificates are managed separately
@@ -187,7 +198,7 @@ jobs:
             EOL
                 fi
             elif [ -f "/etc/letsencrypt/live/api.bengalcodingacademy.com/fullchain.pem" ]; then
-                echo "SSL certificate already exists for api.bengalcodingacademy.com"
+            echo "SSL certificate already exists for api.bengalcodingacademy.com"
                 # Update Nginx config to include SSL
                 sudo tee /etc/nginx/sites-available/api.bengalcodingacademy.com <<EOL
             server {
@@ -309,6 +320,13 @@ jobs:
               echo "✅ HTTP endpoint working correctly!"
             else
               echo "❌ HTTP endpoint test failed"
+            fi
+            
+            echo "Testing HTTPS endpoint..."
+            if curl -f -s https://api.bengalcodingacademy.com/api/health > /dev/null; then
+              echo "✅ HTTPS endpoint working correctly!"
+            else
+              echo "❌ HTTPS endpoint test failed - SSL may not be configured yet"
             fi
 
             echo "Testing HTTPS endpoint..."
