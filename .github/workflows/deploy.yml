@@ -329,4 +329,9 @@ jobs:
             echo "⚠️ HTTPS will be available after Let's Encrypt rate limit resets"
             echo "📅 Rate limit resets after: 2025-09-22 11:11:38 UTC (check certbot logs for exact time)"
 
+            echo "=== Deployment Summary ==="
+            echo "✅ API is accessible at: http://api.bengalcodingacademy.com/api/health"
+            echo "⚠️ HTTPS will be available after Let's Encrypt rate limit resets"
+            echo "📅 Rate limit resets after: 2025-09-22 11:11:38 UTC (check certbot logs for exact time)"
+
             echo "=== Backend Deployed Successfully ==="
