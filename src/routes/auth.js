@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import { AppError, ErrorTypes, asyncHandler } from '../middleware/errorHandler.js';
 
 // In-memory storage for temporary user verification data
 // In production, consider using Redis or a more robust solution
@@ -43,105 +44,101 @@ export function authRouter(prisma) {
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
   });
 
-  router.post('/register', async (req, res, next) => {
-    try {
-      const { name, email, phone, password, dateOfBirth } = registerSchema.parse(req.body);
-      
-      // Check if user already exists (verified) by email
-      const existingByEmail = await prisma.user.findUnique({ where: { email } });
-      if (existingByEmail && existingByEmail.emailVerifiedAt) {
-        return res.status(400).json({ error: 'Email already registered' });
-      }
-
-      // Check if phone number already exists in verified users
-      const existingByPhone = await prisma.user.findUnique({ where: { phone } });
-      if (existingByPhone && existingByPhone.emailVerifiedAt) {
-        return res.status(400).json({ error: 'Phone number already registered' });
-      }
-
-      // Clean up any unverified users with same email/phone
-      if (existingByEmail && !existingByEmail.emailVerifiedAt) {
-        await prisma.user.delete({ where: { id: existingByEmail.id } });
-      }
-      if (existingByPhone && !existingByPhone.emailVerifiedAt) {
-        await prisma.user.delete({ where: { id: existingByPhone.id } });
-      }
-      
-      // Generate email verification token
-      const emailToken = Math.floor(100000 + Math.random()*900000).toString();
-      const exp = new Date(Date.now() + 15*60*1000);
-      
-      // Store verification data temporarily in memory (NOT in database)
-      const tempUserData = {
-        name,
-        email,
-        phone,
-        passwordHash: await bcrypt.hash(password, 10),
-        dateOfBirth: new Date(dateOfBirth),
-        age: (() => {
-          const dob = new Date(dateOfBirth);
-          const diff = Date.now() - dob.getTime();
-          const ageDate = new Date(diff);
-          return Math.abs(ageDate.getUTCFullYear() - 1970);
-        })(),
-        otpCode: emailToken,
-        otpExpiresAt: exp,
-        role: 'STUDENT',
-        createdAt: new Date()
-      };
-      
-      // Store in memory with email as key
-      tempUserStorage.set(email, tempUserData);
-      
-      // Send verification email
-      let emailSent = false;
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        try {
-          await transporter.sendMail({
-            to: email,
-            from: process.env.MAIL_FROM || process.env.SMTP_USER,
-            subject: 'Verify your email - Bengal Coding Academy',
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #ffb209;">Bengal Coding Academy</h2>
-                <p>Hello ${name},</p>
-                <p>Thank you for registering with Bengal Coding Academy! Please verify your email address by entering the code below:</p>
-                <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
-                  <h1 style="color: #ffb209; font-size: 32px; margin: 0; letter-spacing: 5px;">${emailToken}</h1>
-                </div>
-                <p>This code will expire in 15 minutes.</p>
-                <p>If you didn't create an account with us, please ignore this email.</p>
-                <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
-                <p style="color: #666; font-size: 12px;">Bengal Coding Academy - Empowering the next generation of developers</p>
-              </div>
-            `
-          });
-          emailSent = true;
-          console.log(`✅ Verification email sent successfully to: ${email}`);
-        } catch (err) {
-          console.error('❌ Failed to send verification email:', err);
-          emailSent = false;
-        }
-      } else {
-        console.log('⚠️ SMTP not configured - email verification code for', email, 'is:', emailToken);
-      }
-      
-      // Log the verification code for development/testing
-      console.log(`📧 Email verification code for ${email}: ${emailToken}`);
-      
-      // Respond immediately - user is NOT saved to database yet
-      res.json({ 
-        email: email,
-        needsEmailVerification: true,
-        message: emailSent ? 'Verification email sent! Please check your inbox.' : 'Please check the server logs for your verification code.',
-        emailSent: emailSent,
-        // Include verification code in development mode for testing
-        ...(process.env.NODE_ENV !== 'production' && { verificationCode: emailToken })
-      });
-    } catch (e) {
-      next(e);
+  router.post('/register', asyncHandler(async (req, res, next) => {
+    const { name, email, phone, password, dateOfBirth } = registerSchema.parse(req.body);
+    
+    // Check if user already exists (verified) by email
+    const existingByEmail = await prisma.user.findUnique({ where: { email } });
+    if (existingByEmail && existingByEmail.emailVerifiedAt) {
+      throw new AppError('Email already registered', 400, ErrorTypes.CONFLICT);
     }
-  });
+
+    // Check if phone number already exists in verified users
+    const existingByPhone = await prisma.user.findUnique({ where: { phone } });
+    if (existingByPhone && existingByPhone.emailVerifiedAt) {
+      throw new AppError('Phone number already registered', 400, ErrorTypes.CONFLICT);
+    }
+
+    // Clean up any unverified users with same email/phone
+    if (existingByEmail && !existingByEmail.emailVerifiedAt) {
+      await prisma.user.delete({ where: { id: existingByEmail.id } });
+    }
+    if (existingByPhone && !existingByPhone.emailVerifiedAt) {
+      await prisma.user.delete({ where: { id: existingByPhone.id } });
+    }
+    
+    // Generate email verification token
+    const emailToken = Math.floor(100000 + Math.random()*900000).toString();
+    const exp = new Date(Date.now() + 15*60*1000);
+    
+    // Store verification data temporarily in memory (NOT in database)
+    const tempUserData = {
+      name,
+      email,
+      phone,
+      passwordHash: await bcrypt.hash(password, 10),
+      dateOfBirth: new Date(dateOfBirth),
+      age: (() => {
+        const dob = new Date(dateOfBirth);
+        const diff = Date.now() - dob.getTime();
+        const ageDate = new Date(diff);
+        return Math.abs(ageDate.getUTCFullYear() - 1970);
+      })(),
+      otpCode: emailToken,
+      otpExpiresAt: exp,
+      role: 'STUDENT',
+      createdAt: new Date()
+    };
+    
+    // Store in memory with email as key
+    tempUserStorage.set(email, tempUserData);
+    
+    // Send verification email
+    let emailSent = false;
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      try {
+        await transporter.sendMail({
+          to: email,
+          from: process.env.MAIL_FROM || process.env.SMTP_USER,
+          subject: 'Verify your email - Bengal Coding Academy',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #ffb209;">Bengal Coding Academy</h2>
+              <p>Hello ${name},</p>
+              <p>Thank you for registering with Bengal Coding Academy! Please verify your email address by entering the code below:</p>
+              <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
+                <h1 style="color: #ffb209; font-size: 32px; margin: 0; letter-spacing: 5px;">${emailToken}</h1>
+              </div>
+              <p>This code will expire in 15 minutes.</p>
+              <p>If you didn't create an account with us, please ignore this email.</p>
+              <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+              <p style="color: #666; font-size: 12px;">Bengal Coding Academy - Empowering the next generation of developers</p>
+            </div>
+          `
+        });
+        emailSent = true;
+        console.log(`✅ Verification email sent successfully to: ${email}`);
+      } catch (err) {
+        console.error('❌ Failed to send verification email:', err);
+        emailSent = false;
+      }
+    } else {
+      console.log('⚠️ SMTP not configured - email verification code for', email, 'is:', emailToken);
+    }
+    
+    // Log the verification code for development/testing
+    console.log(`📧 Email verification code for ${email}: ${emailToken}`);
+    
+    // Respond immediately - user is NOT saved to database yet
+    res.json({ 
+      email: email,
+      needsEmailVerification: true,
+      message: emailSent ? 'Verification email sent! Please check your inbox.' : 'Please check the server logs for your verification code.',
+      emailSent: emailSent,
+      // Include verification code in development mode for testing
+      ...(process.env.NODE_ENV !== 'production' && { verificationCode: emailToken })
+    });
+  }));
 
   router.post('/login', async (req, res, next) => {
     try {

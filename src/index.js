@@ -22,6 +22,7 @@ import otpRoutes from "./routes/otp.js";
 
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
 import { getRazorpayStatus } from "./services/razorpay.js";
+import { errorHandler, AppError, ErrorTypes } from "./middleware/errorHandler.js";
 
 const app = express();
 
@@ -195,15 +196,14 @@ async function startServer() {
     // Admin scoped
     app.use("/api/admin", requireAuth, requireAdmin, adminRouter(prisma));
 
-    // Global error handler
-    // eslint-disable-next-line no-unused-vars
-    app.use((err, req, res, next) => {
-      console.error(err);
-      const status = err.status || 500;
-      res
-        .status(status)
-        .json({ error: err.message || "Internal Server Error" });
+    // 404 handler - must be before error handler
+    app.use((req, res, next) => {
+      const error = new AppError(`Not found - ${req.originalUrl}`, 404, ErrorTypes.NOT_FOUND);
+      next(error);
     });
+
+    // Global error handler - must be last
+    app.use(errorHandler);
 
     const port = process.env.PORT || 4000;
     const server = app.listen(port, "0.0.0.0", () => {
