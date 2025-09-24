@@ -38,37 +38,27 @@ jobs:
           timeout: 600s
           command_timeout: 600s
           script: |
-            # Skip system updates and installations if already present
-            echo "Checking system requirements..."
+            echo "=== Starting Backend Deployment ==="
 
-            # Only install if not present
+            # Ensure requirements
             if ! command -v node >/dev/null 2>&1; then
-              echo "Installing Node.js..."
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
               sudo apt-get install -y nodejs
-            else
-              echo "Node.js already installed"
             fi
 
             if ! command -v pm2 >/dev/null 2>&1; then
-              echo "Installing PM2..."
               sudo npm install -g pm2
-            else
-              echo "PM2 already installed"
             fi
 
             if ! command -v nginx >/dev/null 2>&1; then
-              echo "Installing Nginx and Certbot..."
               sudo apt-get update -y
               sudo apt-get install -y nginx certbot python3-certbot-nginx
-            else
-              echo "Nginx already installed"
             fi
 
-            # Go to backend directory
+            # Deploy backend
             cd ~/backend-app
 
-            # Write environment variables
+            # Write .env
             cat > .env <<EOL
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
@@ -87,21 +77,11 @@ jobs:
             RAZORPAY_KEY_SECRET=${{ secrets.RAZORPAY_KEY_SECRET }}
             EOL
 
-            # Install dependencies (skip if node_modules exists and package-lock.json is newer)
-            if [ ! -d "node_modules" ] || [ "package-lock.json" -nt "node_modules" ]; then
-              echo "Installing dependencies..."
-              npm ci
-            else
-              echo "Dependencies already up to date"
-            fi
-
-            # Generate Prisma client
+            npm ci
             npx prisma generate --schema=prisma/schema.prisma
-
-            # Run migrations in production-safe way
             npx prisma migrate deploy
 
-            # Configure Nginx
+            # Configure Nginx (HTTP only, Certbot will handle SSL)
             sudo tee /etc/nginx/sites-available/api.bengalcodingacademy.com <<EOL
             server {
                 listen 80;
@@ -122,149 +102,13 @@ jobs:
 
             sudo ln -sf /etc/nginx/sites-available/api.bengalcodingacademy.com /etc/nginx/sites-enabled/
             sudo rm -f /etc/nginx/sites-enabled/default
-            
-            # Fix any existing Nginx configuration issues
-            echo "Fixing Nginx configuration issues..."
-            sudo sed -i 's/gzip_proxied expired no-cache no-store private must-revalidate auth;/gzip_proxied expired no-cache no-store private auth;/' /etc/nginx/sites-enabled/*.com 2>/dev/null || true
-            
-            # Test Nginx configuration
-            if ! sudo nginx -t; then
-                echo "Nginx configuration test failed. Attempting to fix..."
-                sudo sed -i 's/must-revalidate auth/auth/g' /etc/nginx/sites-enabled/*.com 2>/dev/null || true
-                sudo nginx -t
-            fi
-            
+            sudo nginx -t
             sudo systemctl restart nginx
 
-            # Skip SSL certificate management - certificates are managed separately
-            echo "Skipping SSL certificate management to avoid rate limits..."
-            echo "SSL certificates should be managed manually or through separate process"
-            # Configure SSL for API subdomain
-            echo "Configuring SSL for API subdomain..."
-
-            # Check if we can use the main domain certificate (which might include the API subdomain)
-            if [ -f "/etc/letsencrypt/live/bengalcodingacademy.com/fullchain.pem" ]; then
-                echo "Found main domain certificate. Checking if it covers API subdomain..."
-                if openssl x509 -in /etc/letsencrypt/live/bengalcodingacademy.com/fullchain.pem -text -noout | grep -q "api.bengalcodingacademy.com"; then
-                    echo "Main domain certificate covers API subdomain. Using it..."
-                    sudo tee /etc/nginx/sites-available/api.bengalcodingacademy.com <<EOL
-            server {
-                listen 80;
-                server_name api.bengalcodingacademy.com;
-                return 301 https://\$server_name\$request_uri;
-            }
-
-            server {
-                listen 443 ssl http2;
-                server_name api.bengalcodingacademy.com;
-
-                ssl_certificate /etc/letsencrypt/live/bengalcodingacademy.com/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/bengalcodingacademy.com/privkey.pem;
-                include /etc/letsencrypt/options-ssl-nginx.conf;
-                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-                location / {
-                    proxy_pass http://localhost:${{ secrets.PORT }};
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                }
-            }
-            EOL
-                else
-                    echo "Main domain certificate doesn't cover API subdomain"
-                    # Fall back to HTTP only for now
-                    echo "Rate limit reached. Configuring HTTP only for now..."
-                    sudo tee /etc/nginx/sites-available/api.bengalcodingacademy.com <<EOL
-            server {
-                listen 80;
-                server_name api.bengalcodingacademy.com;
-
-                location / {
-                    proxy_pass http://localhost:${{ secrets.PORT }};
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                }
-            }
-            EOL
-                fi
-            elif [ -f "/etc/letsencrypt/live/api.bengalcodingacademy.com/fullchain.pem" ]; then
-            echo "SSL certificate already exists for api.bengalcodingacademy.com"
-                # Update Nginx config to include SSL
-                sudo tee /etc/nginx/sites-available/api.bengalcodingacademy.com <<EOL
-            server {
-                listen 80;
-                server_name api.bengalcodingacademy.com;
-                return 301 https://\$server_name\$request_uri;
-            }
-
-            server {
-                listen 443 ssl http2;
-                server_name api.bengalcodingacademy.com;
-
-                ssl_certificate /etc/letsencrypt/live/api.bengalcodingacademy.com/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/api.bengalcodingacademy.com/privkey.pem;
-                include /etc/letsencrypt/options-ssl-nginx.conf;
-                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-                location / {
-                    proxy_pass http://localhost:${{ secrets.PORT }};
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                }
-            }
-            EOL
-            else
-                echo "No SSL certificate found for api.bengalcodingacademy.com"
-                echo "Attempting to create SSL certificate..."
-                # First, ensure the HTTP config is working
-                sudo nginx -t && sudo systemctl reload nginx
-                
-                # Create SSL certificate with rate limit handling
-                if sudo certbot --nginx -d api.bengalcodingacademy.com --non-interactive --agree-tos --email admin@bengalcodingacademy.com 2>&1 | grep -q "too many certificates"; then
-                    echo "Rate limit reached for Let's Encrypt. Configuring HTTP only for now."
-                    echo "SSL certificate will be created after rate limit resets (check logs for exact time)"
-                    sudo tee /etc/nginx/sites-available/api.bengalcodingacademy.com <<EOL
-            server {
-                listen 80;
-                server_name api.bengalcodingacademy.com;
-
-                location / {
-                    proxy_pass http://localhost:${{ secrets.PORT }};
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                }
-            }
-            EOL
-                else
-                    echo "SSL certificate created successfully"
-                fi
-            fi
-
-            # Start app with PM2
+            # Start with PM2
             pm2 stop backend-api || true
             pm2 delete backend-api || true
-
-            # Create PM2 ecosystem file for better configuration
+            mkdir -p logs
             cat > ecosystem.config.cjs <<EOL
             module.exports = {
               apps: [{
@@ -285,71 +129,28 @@ jobs:
               }]
             };
             EOL
-
-            # Create logs directory
-            mkdir -p logs
-
-            # Start with ecosystem file
             pm2 start ecosystem.config.cjs
             pm2 save
 
-            # Quick health check
-            echo "Waiting for server to start..."
-            sleep 5
+            echo "✅ Backend deployed. Proceeding to SSL setup..."
 
-            # Check PM2 status
-            pm2 status
+      - name: Setup SSL Certificates
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_KEY }}
+          script: |
+            sudo certbot --nginx \
+              --expand \
+              -d bengalcodingacademy.com \
+              -d www.bengalcodingacademy.com \
+              -d api.bengalcodingacademy.com \
+              -d admin.bengalcodingacademy.com \
+              --non-interactive --agree-tos \
+              --email admin@bengalcodingacademy.com || true
 
-            # Simple health check with timeout
-            echo "Testing server health..."
-            if timeout 10s curl -f -s http://localhost:${{ secrets.PORT }}/api/health > /dev/null; then
-              echo "✅ Health check passed!"
-            else
-              echo "❌ Health check failed - checking logs..."
-              pm2 logs backend-api --lines 10
-              exit 1
-            fi
+            # Auto-renew (daily at noon)
+            (sudo crontab -l 2>/dev/null; echo "0 12 * * * certbot renew --quiet --deploy-hook 'systemctl reload nginx'") | sudo crontab -
 
-            # Setup auto-renew for certs
-            echo "0 12 * * * /usr/bin/certbot renew --quiet" | sudo crontab -
-
-            # Final health check
-            echo "Final health check..."
-            echo "Testing HTTP endpoint..."
-            if curl -f -s http://api.bengalcodingacademy.com/api/health > /dev/null; then
-              echo "✅ HTTP endpoint working correctly!"
-            else
-              echo "❌ HTTP endpoint test failed"
-            fi
-            
-            echo "Testing HTTPS endpoint..."
-            if curl -f -s https://api.bengalcodingacademy.com/api/health > /dev/null; then
-              echo "✅ HTTPS endpoint working correctly!"
-            else
-              echo "❌ HTTPS endpoint test failed - SSL may not be configured yet"
-            fi
-
-            echo "Testing HTTPS endpoint..."
-            if curl -f -s https://api.bengalcodingacademy.com/api/health > /dev/null; then
-              echo "✅ HTTPS endpoint working correctly!"
-            else
-              echo "⚠️ HTTPS endpoint test failed - this is expected if rate limit was reached"
-              echo "API is working on HTTP. HTTPS will be available after rate limit resets."
-            fi
-
-            echo "=== Deployment Summary ==="
-            echo "✅ API is accessible at: http://api.bengalcodingacademy.com/api/health"
-            echo "⚠️ HTTPS will be available after Let's Encrypt rate limit resets"
-            echo "📅 Rate limit resets after: 2025-09-22 11:11:38 UTC (check certbot logs for exact time)"
-
-            echo "=== Deployment Summary ==="
-            echo "✅ API is accessible at: http://api.bengalcodingacademy.com/api/health"
-            echo "⚠️ HTTPS will be available after Let's Encrypt rate limit resets"
-            echo "📅 Rate limit resets after: 2025-09-22 11:11:38 UTC (check certbot logs for exact time)"
-
-            echo "=== Deployment Summary ==="
-            echo "✅ API is accessible at: http://api.bengalcodingacademy.com/api/health"
-            echo "⚠️ HTTPS will be available after Let's Encrypt rate limit resets"
-            echo "📅 Rate limit resets after: 2025-09-22 11:11:38 UTC (check certbot logs for exact time)"
-
-            echo "=== Backend Deployed Successfully ==="
+            echo "=== SSL setup done. Certificates will auto-renew ==="
