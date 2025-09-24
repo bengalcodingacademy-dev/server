@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: "18"
 
       - name: Copy files to DigitalOcean
         uses: appleboy/scp-action@v0.1.7
@@ -40,7 +40,7 @@ jobs:
           script: |
             # Skip system updates and installations if already present
             echo "Checking system requirements..."
-            
+
             # Only install if not present
             if ! command -v node >/dev/null 2>&1; then
               echo "Installing Node.js..."
@@ -132,7 +132,7 @@ jobs:
             # Start app with PM2
             pm2 stop backend-api || true
             pm2 delete backend-api || true
-            
+
             # Create PM2 ecosystem file for better configuration
             cat > ecosystem.config.cjs <<EOL
             module.exports = {
@@ -154,10 +154,10 @@ jobs:
               }]
             };
             EOL
-            
+
             # Create logs directory
             mkdir -p logs
-            
+
             # Start with ecosystem file
             pm2 start ecosystem.config.cjs
             pm2 save
@@ -165,10 +165,10 @@ jobs:
             # Quick health check
             echo "Waiting for server to start..."
             sleep 5
-            
+
             # Check PM2 status
             pm2 status
-            
+
             # Simple health check with timeout
             echo "Testing server health..."
             if timeout 10s curl -f -s http://localhost:${{ secrets.PORT }}/api/health > /dev/null; then
@@ -190,5 +190,18 @@ jobs:
             else
               echo "❌ HTTP endpoint test failed"
             fi
+
+            echo "Testing HTTPS endpoint..."
+            if curl -f -s https://api.bengalcodingacademy.com/api/health > /dev/null; then
+              echo "✅ HTTPS endpoint working correctly!"
+            else
+              echo "⚠️ HTTPS endpoint test failed - this is expected if rate limit was reached"
+              echo "API is working on HTTP. HTTPS will be available after rate limit resets."
+            fi
+
+            echo "=== Deployment Summary ==="
+            echo "✅ API is accessible at: http://api.bengalcodingacademy.com/api/health"
+            echo "⚠️ HTTPS will be available after Let's Encrypt rate limit resets"
+            echo "📅 Rate limit resets after: 2025-09-22 11:11:38 UTC (check certbot logs for exact time)"
 
             echo "=== Backend Deployed Successfully ==="

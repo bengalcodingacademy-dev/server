@@ -8,7 +8,7 @@ const upsertCourseSchema = z.object({
   title: z.string().min(2),
   slug: z.string().min(2),
   imageUrl: z.string().url().nullable().optional(),
-  priceCents: z.number().int().nonnegative(),
+  priceRupees: z.number().nonnegative(),
   shortDesc: z.string().min(2),
   longDesc: z.string().min(2),
   duration: z.string().nullable().optional(),
@@ -26,7 +26,7 @@ const upsertCourseSchema = z.object({
   courseIncludes: z.any().optional(),
   // Monthly payment fields
   durationMonths: z.number().int().positive().optional(),
-  monthlyFeeCents: z.number().int().nonnegative().optional(),
+  monthlyFeeRupees: z.number().nonnegative().optional(),
   isMonthlyPayment: z.boolean().optional(),
   isActive: z.boolean().optional()
 });
@@ -66,11 +66,11 @@ export function adminRouter(prisma) {
           title: true,
           slug: true,
           imageUrl: true,
-          priceCents: true,
+          priceRupees: true,
           shortDesc: true,
           isMonthlyPayment: true,
           durationMonths: true,
-          monthlyFeeCents: true,
+          monthlyFeeRupees: true,
           isActive: true,
           createdAt: true
         },
@@ -133,40 +133,65 @@ export function adminRouter(prisma) {
   router.delete('/courses/:id', async (req, res, next) => {
     try {
       const id = req.params.id;
+      console.log(`Attempting to delete course with ID: ${id}`);
+      
+      // Check if course exists
+      const course = await prisma.course.findUnique({ where: { id } });
+      if (!course) {
+        console.log(`Course not found with ID: ${id}`);
+        return res.status(404).json({ error: 'Course not found' });
+      }
+      
+      console.log(`Found course: ${course.title}, proceeding with deletion...`);
       
       // Force delete all related data
       await prisma.$transaction(async (tx) => {
-        // Delete all purchases for this course
-        await tx.purchase.deleteMany({ 
+        // Delete all course content for this course
+        const courseContentDeleted = await tx.courseContent.deleteMany({ 
           where: { courseId: id } 
         });
+        console.log(`Deleted ${courseContentDeleted.count} course content records`);
+        
+        // Delete all purchases for this course
+        const purchasesDeleted = await tx.purchase.deleteMany({ 
+          where: { courseId: id } 
+        });
+        console.log(`Deleted ${purchasesDeleted.count} purchase records`);
         
         // Delete all monthly purchases for this course
-        await tx.monthlyPurchase.deleteMany({ 
+        const monthlyPurchasesDeleted = await tx.monthlyPurchase.deleteMany({ 
           where: { courseId: id } 
         });
+        console.log(`Deleted ${monthlyPurchasesDeleted.count} monthly purchase records`);
         
         // Delete all testimonials for this course
-        await tx.testimonial.deleteMany({ 
+        const testimonialsDeleted = await tx.testimonial.deleteMany({ 
           where: { courseId: id } 
         });
+        console.log(`Deleted ${testimonialsDeleted.count} testimonial records`);
         
         // Delete all coupons for this course
-        await tx.coupon.deleteMany({ 
+        const couponsDeleted = await tx.coupon.deleteMany({ 
           where: { courseId: id } 
         });
+        console.log(`Deleted ${couponsDeleted.count} coupon records`);
         
         // Delete all announcements for this course
-        await tx.announcement.deleteMany({ 
+        const announcementsDeleted = await tx.announcement.deleteMany({ 
           where: { courseId: id } 
         });
+        console.log(`Deleted ${announcementsDeleted.count} announcement records`);
         
         // Finally delete the course itself
         await tx.course.delete({ where: { id } });
+        console.log(`Successfully deleted course: ${course.title}`);
       });
       
       res.json({ ok: true, message: 'Course and all associated data deleted successfully' });
-    } catch (e) { next(e); }
+    } catch (e) { 
+      console.error('Error deleting course:', e);
+      next(e); 
+    }
   });
 
   // Purchases table
@@ -286,7 +311,7 @@ export function adminRouter(prisma) {
       const start = new Date(`${year}-01-01T00:00:00.000Z`);
       const end = new Date(`${year + 1}-01-01T00:00:00.000Z`);
       const rows = await prisma.$queryRawUnsafe(`
-        SELECT EXTRACT(MONTH FROM "createdAt") AS month, SUM("amountCents") AS revenue, COUNT(*) AS orders
+        SELECT EXTRACT(MONTH FROM "createdAt") AS month, SUM("amountRupees") AS revenue, COUNT(*) AS orders
         FROM "Purchase"
         WHERE "createdAt" >= $1 AND "createdAt" < $2 AND status = 'PAID'
         GROUP BY month ORDER BY month;
@@ -316,7 +341,7 @@ export function adminRouter(prisma) {
       const end = new Date(year, month, 0, 23, 59, 59, 999); // Last day of month
       
       const rows = await prisma.$queryRawUnsafe(`
-        SELECT EXTRACT(DAY FROM "createdAt") AS day, SUM("amountCents") AS revenue, COUNT(*) AS orders
+        SELECT EXTRACT(DAY FROM "createdAt") AS day, SUM("amountRupees") AS revenue, COUNT(*) AS orders
         FROM "Purchase"
         WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND status = 'PAID'
         GROUP BY day ORDER BY day;
@@ -339,7 +364,7 @@ export function adminRouter(prisma) {
   router.get('/stats/yearly-sales', async (req, res, next) => {
     try {
       const rows = await prisma.$queryRawUnsafe(`
-        SELECT EXTRACT(YEAR FROM "createdAt") AS year, SUM("amountCents") AS revenue, COUNT(*) AS orders
+        SELECT EXTRACT(YEAR FROM "createdAt") AS year, SUM("amountRupees") AS revenue, COUNT(*) AS orders
         FROM "Purchase"
         WHERE status = 'PAID'
         GROUP BY year ORDER BY year;
@@ -347,7 +372,7 @@ export function adminRouter(prisma) {
       
       const result = Array.isArray(rows) ? rows.map(row => ({
         year: Number(row.year),
-        totalAmount: Number(row.revenue) / 100, // Convert to rupees
+        totalAmount: Number(row.revenue), // Already in rupees
         orderCount: Number(row.orders)
       })) : [];
       
@@ -428,7 +453,7 @@ export function adminRouter(prisma) {
 
       const result = payments.map(payment => ({
         id: payment.id,
-        amount: payment.amountCents / 100, // Convert to rupees
+        amount: parseFloat(payment.amountRupees), // Already in rupees
         status: payment.status,
         isMonthlyPayment: payment.isMonthlyPayment,
         monthNumber: payment.monthNumber,
@@ -471,7 +496,7 @@ export function adminRouter(prisma) {
           purchases: {
             select: {
               status: true,
-              amountCents: true
+              amountRupees: true
             }
           }
         },
@@ -488,7 +513,7 @@ export function adminRouter(prisma) {
         dateOfBirth: u.dateOfBirth,
         createdAt: u.createdAt,
         purchasesCount: u.purchases.filter(p=>p.status==='PAID').length,
-        totalPaidCents: u.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+b.amountCents,0)
+        totalPaidRupees: u.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+parseFloat(b.amountRupees),0)
       }));
       
       // Set cache headers
@@ -736,6 +761,29 @@ router.post('/uploads/presign', async (req, res, next) => {
       });
       res.json(request);
     } catch (e) { next(e); }
+  });
+
+  // Cleanup failed purchases endpoint
+  router.post('/cleanup-failed-purchases', async (req, res, next) => {
+    try {
+      // Delete PENDING purchases older than 1 hour
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const deletedCount = await prisma.purchase.deleteMany({
+        where: {
+          status: 'PENDING',
+          createdAt: {
+            lt: oneHourAgo
+          }
+        }
+      });
+
+      res.json({ 
+        message: `Cleaned up ${deletedCount.count} failed purchase records`,
+        deletedCount: deletedCount.count
+      });
+    } catch (e) { 
+      next(e); 
+    }
   });
 
   return router;

@@ -11,6 +11,7 @@ model User {
   id               String                @id @default(uuid())
   name             String
   email            String                @unique
+  phone            String?               @unique
   passwordHash     String
   role             Role                  @default(STUDENT)
   createdAt        DateTime              @default(now())
@@ -19,6 +20,7 @@ model User {
   resetTokenExp    DateTime?
   dateOfBirth      DateTime?
   emailVerifiedAt  DateTime?
+  phoneVerifiedAt  DateTime?
   otpCode          String?
   otpExpiresAt     DateTime?
   photoUrl         String?
@@ -30,6 +32,7 @@ model User {
   @@index([role])
   @@index([createdAt])
   @@index([emailVerifiedAt])
+  @@index([phoneVerifiedAt])
 }
 
 model Course {
@@ -37,7 +40,6 @@ model Course {
   title            String
   slug             String            @unique
   imageUrl         String?
-  priceCents       Int
   shortDesc        String
   longDesc         String
   duration         String?
@@ -58,7 +60,8 @@ model Course {
   starRating       Float?            @default(0.0)
   durationMonths   Int?
   isMonthlyPayment Boolean           @default(false)
-  monthlyFeeCents  Int?
+  priceRupees      Decimal           @db.Decimal(10, 2)
+  monthlyFeeRupees Decimal?          @db.Decimal(10, 2)
   announcements    Announcement[]
   coupons          Coupon[]
   monthlyPurchases MonthlyPurchase[]
@@ -74,11 +77,8 @@ model Purchase {
   id                String   @id @default(uuid())
   userId            String
   courseId          String
-  amountCents       Int
   status            String
   createdAt         DateTime @default(now())
-  upiMobile         String?
-  upiTxnId          String?
   isMonthlyPayment  Boolean  @default(false)
   monthNumber       Int?
   totalMonths       Int?
@@ -86,6 +86,7 @@ model Purchase {
   razorpayPaymentId String?
   razorpaySignature String?
   updatedAt         DateTime @default(now()) @updatedAt
+  amountRupees      Decimal  @db.Decimal(10, 2)
   course            Course   @relation(fields: [courseId], references: [id])
   user              User     @relation(fields: [userId], references: [id])
 
@@ -99,19 +100,17 @@ model Purchase {
 }
 
 model MonthlyPurchase {
-  id          String    @id @default(uuid())
-  userId      String
-  courseId    String
-  monthNumber Int
-  amountCents Int
-  status      String
-  upiMobile   String?
-  upiTxnId    String?
-  dueDate     DateTime
-  paidAt      DateTime?
-  createdAt   DateTime  @default(now())
-  course      Course    @relation(fields: [courseId], references: [id])
-  user        User      @relation(fields: [userId], references: [id])
+  id           String    @id @default(uuid())
+  userId       String
+  courseId     String
+  monthNumber  Int
+  status       String
+  dueDate      DateTime
+  paidAt       DateTime?
+  createdAt    DateTime  @default(now())
+  amountRupees Decimal   @db.Decimal(10, 2)
+  course       Course    @relation(fields: [courseId], references: [id])
+  user         User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([courseId])
