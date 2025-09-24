@@ -46,32 +46,61 @@ export function purchasesRouter(prisma) {
         if (existingPurchase) {
           return res.status(400).json({ error: 'You already have a purchase for this course' });
         }
-      } else {
-        // For monthly payments, check if user already has a pending payment for the same month
-        const existingMonthlyPurchase = await prisma.purchase.findFirst({
+
+        // Clean up any failed PENDING purchases for this course (older than 1 hour)
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        await prisma.purchase.deleteMany({
           where: {
             userId: req.user.id,
             courseId,
-            status: { in: ['PENDING', 'PAID'] },
+            status: 'PENDING',
+            isMonthlyPayment: false,
+            createdAt: {
+              lt: oneHourAgo
+            }
+          }
+        });
+      } else {
+        // For monthly payments, check if user already has a paid payment for the same month
+        const existingPaidPurchase = await prisma.purchase.findFirst({
+          where: {
+            userId: req.user.id,
+            courseId,
+            status: 'PAID',
             isMonthlyPayment: true,
             monthNumber: monthNumber
           }
         });
 
-        if (existingMonthlyPurchase) {
+        if (existingPaidPurchase) {
           return res.status(400).json({ error: `You already have a payment for month ${monthNumber}` });
         }
+
+        // Clean up any failed PENDING purchases for this month (older than 1 hour)
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        await prisma.purchase.deleteMany({
+          where: {
+            userId: req.user.id,
+            courseId,
+            status: 'PENDING',
+            isMonthlyPayment: true,
+            monthNumber: monthNumber,
+            createdAt: {
+              lt: oneHourAgo
+            }
+          }
+        });
       }
 
       // Calculate amount
-      let amountCents;
+      let amountRupees;
       if (isMonthlyPayment) {
-        amountCents = course.monthlyFeeCents || 0;
+        amountRupees = parseFloat(course.monthlyFeeRupees) || 0;
       } else {
-        amountCents = course.priceCents;
+        amountRupees = parseFloat(course.priceRupees) || 0;
       }
 
-      if (amountCents <= 0) {
+      if (amountRupees <= 0) {
         return res.status(400).json({ error: 'Invalid course price' });
       }
 
@@ -80,7 +109,7 @@ export function purchasesRouter(prisma) {
         data: {
           userId: req.user.id,
           courseId,
-          amountCents,
+          amountRupees,
           status: 'PENDING',
           isMonthlyPayment: isMonthlyPayment || false,
           monthNumber,
@@ -90,7 +119,7 @@ export function purchasesRouter(prisma) {
 
       // Create Razorpay order
       const orderData = {
-        amount: amountCents, // Amount in paise
+        amount: Math.round(amountRupees * 100), // Convert rupees to paise for Razorpay
         currency: 'INR',
         receipt: `p_${purchase.id.slice(-8)}`,
         notes: {
@@ -116,7 +145,7 @@ export function purchasesRouter(prisma) {
         order: razorpayOrder,
         purchase: {
           id: purchase.id,
-          amountCents: purchase.amountCents,
+          amountRupees: purchase.amountRupees,
           isMonthlyPayment: purchase.isMonthlyPayment,
           monthNumber: purchase.monthNumber,
           totalMonths: purchase.totalMonths
@@ -183,8 +212,8 @@ export function purchasesRouter(prisma) {
               shortDesc: true,
               isMonthlyPayment: true,
               durationMonths: true,
-              monthlyFeeCents: true,
-              priceCents: true
+              monthlyFeeRupees: true,
+              priceRupees: true
             }
           }
         }
@@ -225,8 +254,8 @@ export function purchasesRouter(prisma) {
               shortDesc: true,
               isMonthlyPayment: true,
               durationMonths: true,
-              monthlyFeeCents: true,
-              priceCents: true
+              monthlyFeeRupees: true,
+              priceRupees: true
             }
           }
         },

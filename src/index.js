@@ -18,6 +18,7 @@ import { youtubeVideosRouter } from "./routes/youtubeVideos.js";
 import { adminRouter } from "./routes/admin.js";
 import { meRouter } from "./routes/me.js";
 import { courseContentRouter } from "./routes/courseContent.js";
+import otpRoutes from "./routes/otp.js";
 
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
 import { getRazorpayStatus } from "./services/razorpay.js";
@@ -181,6 +182,7 @@ async function startServer() {
     });
 
     app.use("/api/auth", authRouter(prisma));
+    app.use("/api/otp", otpRoutes);
     app.use("/api/courses", coursesRouter(prisma));
     app.use("/api/purchases", requireAuth, purchasesRouter(prisma));
     app.use("/api/webinars", webinarsRouter(prisma));

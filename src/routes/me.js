@@ -82,7 +82,7 @@ export function meRouter(prisma) {
           purchases: {
             select: {
               status: true,
-              amountCents: true,
+              amountRupees: true,
               course: {
                 select: {
                   id: true,
@@ -98,7 +98,7 @@ export function meRouter(prisma) {
         }
       });
       
-      const totalPaid = user.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a + b.amountCents, 0);
+      const totalPaid = user.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a + parseFloat(b.amountRupees), 0);
       
       // Group purchases by course to avoid duplicate course entries
       const courseMap = new Map();
@@ -129,7 +129,7 @@ export function meRouter(prisma) {
         age: user.age,
         photoUrl: user.photoUrl,
         status,
-        totalPaidCents: totalPaid,
+        totalPaidRupees: totalPaid,
         courses
       });
     } catch (e) { next(e); }
