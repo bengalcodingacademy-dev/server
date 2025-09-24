@@ -94,25 +94,47 @@ export function authRouter(prisma) {
       tempUserStorage.set(email, tempUserData);
       
       // Send verification email
-      if (process.env.SMTP_USER) {
-        transporter.sendMail({
-          to: email,
-          from: process.env.MAIL_FROM || process.env.SMTP_USER,
-          subject: 'Verify your email - Bengal Coding Academy',
-          html: `<p>Your email verification code is <b>${emailToken}</b>. It expires in 15 minutes.</p>`
-        }).catch(err => {
-          console.error('Failed to send verification email:', err);
-          console.log('FALLBACK: Email verification code for', email, 'is:', emailToken);
-        });
+      let emailSent = false;
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        try {
+          await transporter.sendMail({
+            to: email,
+            from: process.env.MAIL_FROM || process.env.SMTP_USER,
+            subject: 'Verify your email - Bengal Coding Academy',
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #ffb209;">Bengal Coding Academy</h2>
+                <p>Hello ${name},</p>
+                <p>Thank you for registering with Bengal Coding Academy! Please verify your email address by entering the code below:</p>
+                <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
+                  <h1 style="color: #ffb209; font-size: 32px; margin: 0; letter-spacing: 5px;">${emailToken}</h1>
+                </div>
+                <p>This code will expire in 15 minutes.</p>
+                <p>If you didn't create an account with us, please ignore this email.</p>
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #666; font-size: 12px;">Bengal Coding Academy - Empowering the next generation of developers</p>
+              </div>
+            `
+          });
+          emailSent = true;
+          console.log(`✅ Verification email sent successfully to: ${email}`);
+        } catch (err) {
+          console.error('❌ Failed to send verification email:', err);
+          emailSent = false;
+        }
       } else {
-        console.log('SMTP not configured - email verification code for', email, 'is:', emailToken);
+        console.log('⚠️ SMTP not configured - email verification code for', email, 'is:', emailToken);
       }
+      
+      // Log the verification code for development/testing
+      console.log(`📧 Email verification code for ${email}: ${emailToken}`);
       
       // Respond immediately - user is NOT saved to database yet
       res.json({ 
         email: email,
         needsEmailVerification: true,
-        message: 'Please check your email for verification code',
+        message: emailSent ? 'Verification email sent! Please check your inbox.' : 'Please check the server logs for your verification code.',
+        emailSent: emailSent,
         // Include verification code in development mode for testing
         ...(process.env.NODE_ENV !== 'production' && { verificationCode: emailToken })
       });
@@ -180,29 +202,27 @@ export function authRouter(prisma) {
         return res.status(400).json({ error: 'Invalid or expired code' });
       }
       
-      // NOW save user to database after successful email verification
-      const newUser = await prisma.user.create({
-        data: {
-          name: tempUserData.name,
-          email: tempUserData.email,
-          phone: tempUserData.phone,
-          passwordHash: tempUserData.passwordHash,
-          dateOfBirth: tempUserData.dateOfBirth,
-          age: tempUserData.age,
-          role: tempUserData.role,
-          emailVerifiedAt: new Date(),
-          phoneVerifiedAt: null, // Phone verification optional now
-          createdAt: tempUserData.createdAt
-        }
-      });
+            // NOW save user to database after successful email verification
+            const newUser = await prisma.user.create({
+              data: {
+                name: tempUserData.name,
+                email: tempUserData.email,
+                phone: tempUserData.phone,
+                passwordHash: tempUserData.passwordHash,
+                dateOfBirth: tempUserData.dateOfBirth,
+                age: tempUserData.age,
+                role: tempUserData.role,
+                emailVerifiedAt: new Date(),
+                createdAt: tempUserData.createdAt
+              }
+            });
       
       // Clean up temporary data
       tempUserStorage.delete(body.email);
       
       res.json({ 
         ok: true, 
-        email: newUser.email, 
-        phone: newUser.phone,
+        email: newUser.email,
         message: 'Email verified successfully! You can now log in.'
       });
     } catch (e) { 
@@ -210,64 +230,6 @@ export function authRouter(prisma) {
     }
   });
 
-  router.post('/verify-phone', async (req, res, next) => {
-    try {
-      const body = z.object({ phone: z.string(), code: z.string().length(6) }).parse(req.body);
-      const user = await prisma.user.findUnique({ where: { phone: body.phone } });
-      if (!user) return res.status(400).json({ error: 'User not found' });
-      
-      // Development fallback - accept "123456" as valid OTP
-      if (body.code === "123456") {
-        const updated = await prisma.user.update({ 
-          where: { id: user.id }, 
-          data: { 
-            phoneVerifiedAt: new Date()
-          } 
-        });
-        return res.json({ ok: true, phone: updated.phone, email: updated.email });
-      } else {
-        return res.status(400).json({ error: 'Invalid OTP (development mode - use 123456)' });
-      }
-    } catch (e) { 
-      console.error('Phone verification error:', e);
-      next(e); 
-    }
-  });
-
-  // New endpoint for phone.email widget verification
-  router.post('/verify-phone-widget', async (req, res, next) => {
-    try {
-      const body = z.object({ 
-        user_json_url: z.string().url(),
-        email: z.string().email() 
-      }).parse(req.body);
-      
-      // Find user by email (since we're verifying phone via widget)
-      const user = await prisma.user.findUnique({ where: { email: body.email } });
-      if (!user) return res.status(400).json({ error: 'User not found' });
-      
-      // Fetch verification data from phone.email
-      const axios = await import('axios');
-      const response = await axios.default.get(body.user_json_url);
-      const phoneData = response.data;
-      
-      const verifiedPhone = phoneData.user_phone_number;
-      
-      // Update user with verified phone and mark as verified
-      const updated = await prisma.user.update({ 
-        where: { id: user.id }, 
-        data: { 
-          phone: verifiedPhone,
-          phoneVerifiedAt: new Date()
-        } 
-      });
-      
-      res.json({ ok: true, phone: updated.phone, email: updated.email });
-    } catch (e) { 
-      console.error('Phone widget verification error:', e);
-      next(e); 
-    }
-  });
 
   // Cleanup unverified users (call this periodically)
   router.post('/cleanup-unverified', async (req, res, next) => {
