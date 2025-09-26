@@ -42,14 +42,17 @@ export function authRouter(prisma) {
     port: Number(process.env.SMTP_PORT || 587),
     secure: false,
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-    connectionTimeout: 60000, // 60 seconds
-    greetingTimeout: 30000,   // 30 seconds
-    socketTimeout: 60000,     // 60 seconds
-    pool: true,               // Use connection pooling
-    maxConnections: 5,        // Max concurrent connections
-    maxMessages: 100,         // Max messages per connection
-    rateDelta: 20000,         // Rate limiting
-    rateLimit: 5              // Max 5 messages per rateDelta
+    connectionTimeout: 120000, // 120 seconds
+    greetingTimeout: 60000,     // 60 seconds
+    socketTimeout: 120000,      // 120 seconds
+    pool: true,                 // Use connection pooling
+    maxConnections: 3,          // Reduced concurrent connections
+    maxMessages: 50,           // Reduced messages per connection
+    rateDelta: 30000,          // Increased rate limiting window
+    rateLimit: 3,              // Reduced rate limit
+    tls: {
+      rejectUnauthorized: false // Allow self-signed certificates
+    }
   });
 
   router.post('/register', asyncHandler(async (req, res, next) => {
@@ -123,7 +126,7 @@ export function authRouter(prisma) {
     let emailSent = false;
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        // Add timeout wrapper for email sending
+        // Add timeout wrapper for email sending (increased to 60 seconds)
         const emailPromise = transporter.sendMail({
           to: email,
           from: process.env.MAIL_FROM || process.env.SMTP_USER,
@@ -144,9 +147,9 @@ export function authRouter(prisma) {
           `
         });
         
-        // Add timeout to email sending
+        // Add timeout to email sending (increased to 60 seconds)
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Email sending timeout')), 30000)
+          setTimeout(() => reject(new Error('Email sending timeout')), 60000)
         );
         
         await Promise.race([emailPromise, timeoutPromise]);
