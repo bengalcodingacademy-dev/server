@@ -125,7 +125,9 @@ export const errorHandler = (err, req, res, next) => {
 
   // Zod validation errors
   if (err.name === 'ZodError') {
-    const message = err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+    const message = err.errors && err.errors.length > 0 
+      ? err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+      : 'Validation error';
     error = new AppError(message, 400, ErrorTypes.VALIDATION_ERROR);
   }
 
