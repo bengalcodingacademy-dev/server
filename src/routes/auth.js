@@ -37,23 +37,33 @@ const loginSchema = z.object({
 
 export function authRouter(prisma) {
   const router = express.Router();
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: false,
-    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-    connectionTimeout: 120000, // 120 seconds
-    greetingTimeout: 60000,     // 60 seconds
-    socketTimeout: 120000,      // 120 seconds
-    pool: true,                 // Use connection pooling
-    maxConnections: 3,          // Reduced concurrent connections
-    maxMessages: 50,           // Reduced messages per connection
-    rateDelta: 30000,          // Increased rate limiting window
-    rateLimit: 3,              // Reduced rate limit
-    tls: {
-      rejectUnauthorized: false // Allow self-signed certificates
-    }
-  });
+  // Create transporter with fallback configuration
+  const createTransporter = () => {
+    const config = {
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: false,
+      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+      connectionTimeout: 30000,  // 30 seconds
+      greetingTimeout: 15000,    // 15 seconds
+      socketTimeout: 30000,      // 30 seconds
+      pool: false,               // Disable pooling for better reliability
+      tls: {
+        rejectUnauthorized: false // Allow self-signed certificates
+      }
+    };
+    
+    console.log('📧 SMTP Configuration:', {
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      hasAuth: !!config.auth
+    });
+    
+    return nodemailer.createTransport(config);
+  };
+  
+  const transporter = createTransporter();
 
   router.post('/register', asyncHandler(async (req, res, next) => {
     const { name, email, phone, password, dateOfBirth } = registerSchema.parse(req.body);
@@ -126,7 +136,13 @@ export function authRouter(prisma) {
     let emailSent = false;
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        // Add timeout wrapper for email sending (increased to 60 seconds)
+        console.log(`📧 Attempting to send verification email to: ${email}`);
+        
+        // Test SMTP connection first
+        await transporter.verify();
+        console.log('✅ SMTP connection verified');
+        
+        // Add timeout wrapper for email sending (increased to 90 seconds)
         const emailPromise = transporter.sendMail({
           to: email,
           from: process.env.MAIL_FROM || process.env.SMTP_USER,
@@ -147,9 +163,9 @@ export function authRouter(prisma) {
           `
         });
         
-        // Add timeout to email sending (increased to 60 seconds)
+        // Add timeout to email sending (increased to 90 seconds)
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Email sending timeout')), 60000)
+          setTimeout(() => reject(new Error('Email sending timeout')), 90000)
         );
         
         await Promise.race([emailPromise, timeoutPromise]);
@@ -157,6 +173,13 @@ export function authRouter(prisma) {
         console.log(`✅ Verification email sent successfully to: ${email}`);
       } catch (err) {
         console.error('❌ Failed to send verification email:', err.message || err);
+        console.error('❌ SMTP Error details:', {
+          code: err.code,
+          command: err.command,
+          response: err.response,
+          errno: err.errno,
+          syscall: err.syscall
+        });
         emailSent = false;
         // Don't throw error - continue with registration even if email fails
       }
