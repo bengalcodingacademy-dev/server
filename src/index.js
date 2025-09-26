@@ -27,7 +27,8 @@ import { errorHandler, AppError, ErrorTypes } from "./middleware/errorHandler.js
 const app = express();
 
 // Trust proxy for production (behind load balancer/reverse proxy)
-app.set('trust proxy', true);
+// Only trust the first proxy (load balancer)
+app.set('trust proxy', 1);
 
 //Push to DO
 const prisma = new PrismaClient({
