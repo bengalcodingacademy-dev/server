@@ -38,7 +38,7 @@ const loginSchema = z.object({
 export function authRouter(prisma) {
   const router = express.Router();
   // Simple SMTP transporter configuration
-  const transporter = nodemailer.createTransporter({
+  const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || 587),
     secure: false,
