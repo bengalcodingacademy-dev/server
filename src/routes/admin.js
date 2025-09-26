@@ -144,48 +144,58 @@ export function adminRouter(prisma) {
       
       console.log(`Found course: ${course.title}, proceeding with deletion...`);
       
-      // Force delete all related data
-      await prisma.$transaction(async (tx) => {
+      // Delete related data first (without transaction to avoid timeout)
+      try {
         // Delete all course content for this course
-        const courseContentDeleted = await tx.courseContent.deleteMany({ 
+        const courseContentDeleted = await prisma.courseContent.deleteMany({ 
           where: { courseId: id } 
         });
         console.log(`Deleted ${courseContentDeleted.count} course content records`);
         
         // Delete all purchases for this course
-        const purchasesDeleted = await tx.purchase.deleteMany({ 
+        const purchasesDeleted = await prisma.purchase.deleteMany({ 
           where: { courseId: id } 
         });
         console.log(`Deleted ${purchasesDeleted.count} purchase records`);
         
         // Delete all monthly purchases for this course
-        const monthlyPurchasesDeleted = await tx.monthlyPurchase.deleteMany({ 
+        const monthlyPurchasesDeleted = await prisma.monthlyPurchase.deleteMany({ 
           where: { courseId: id } 
         });
         console.log(`Deleted ${monthlyPurchasesDeleted.count} monthly purchase records`);
         
         // Delete all testimonials for this course
-        const testimonialsDeleted = await tx.testimonial.deleteMany({ 
+        const testimonialsDeleted = await prisma.testimonial.deleteMany({ 
           where: { courseId: id } 
         });
         console.log(`Deleted ${testimonialsDeleted.count} testimonial records`);
         
         // Delete all coupons for this course
-        const couponsDeleted = await tx.coupon.deleteMany({ 
+        const couponsDeleted = await prisma.coupon.deleteMany({ 
           where: { courseId: id } 
         });
         console.log(`Deleted ${couponsDeleted.count} coupon records`);
         
         // Delete all announcements for this course
-        const announcementsDeleted = await tx.announcement.deleteMany({ 
+        const announcementsDeleted = await prisma.announcement.deleteMany({ 
           where: { courseId: id } 
         });
         console.log(`Deleted ${announcementsDeleted.count} announcement records`);
         
         // Finally delete the course itself
-        await tx.course.delete({ where: { id } });
+        await prisma.course.delete({ where: { id } });
         console.log(`Successfully deleted course: ${course.title}`);
-      });
+        
+      } catch (deleteError) {
+        console.error('Error during deletion:', deleteError);
+        // Check if course still exists
+        const courseStillExists = await prisma.course.findUnique({ where: { id } });
+        if (courseStillExists) {
+          throw deleteError; // Re-throw if course still exists
+        }
+        // If course is already deleted, consider it successful
+        console.log('Course was already deleted, considering operation successful');
+      }
       
       res.json({ ok: true, message: 'Course and all associated data deleted successfully' });
     } catch (e) { 

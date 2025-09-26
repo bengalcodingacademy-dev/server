@@ -1,13 +1,14 @@
 import express from 'express';
 import { z } from 'zod';
 import { createOrder, verifyPayment, fetchPayment } from '../services/razorpay.js';
+import { requireAuth } from '../middleware/auth.js';
 
 // Razorpay order creation schema
 const razorpayOrderSchema = z.object({
   courseId: z.string().uuid(),
   isMonthlyPayment: z.boolean().optional(),
   monthNumber: z.number().int().positive().optional(),
-  totalMonths: z.number().int().positive().optional()
+  totalMonths: z.number().int().min(0).optional() // Allow 0 for one-time payments
 });
 
 // Razorpay payment verification schema
@@ -22,7 +23,7 @@ export function purchasesRouter(prisma) {
 
 
   // Create Razorpay order
-  router.post('/create-order', async (req, res, next) => {
+  router.post('/create-order', requireAuth, async (req, res, next) => {
     try {
       const { courseId, isMonthlyPayment, monthNumber, totalMonths } = razorpayOrderSchema.parse(req.body);
       
@@ -153,12 +154,27 @@ export function purchasesRouter(prisma) {
       });
     } catch (e) { 
       console.error('Error creating Razorpay order:', e);
+      
+      // Provide more specific error messages
+      if (e.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: 'Invalid request data', 
+          details: e.errors 
+        });
+      }
+      
+      if (e.message && e.message.includes('Razorpay not configured')) {
+        return res.status(500).json({ 
+          error: 'Payment service not configured. Please contact support.' 
+        });
+      }
+      
       next(e); 
     }
   });
 
   // Verify Razorpay payment
-  router.post('/verify-payment', async (req, res, next) => {
+  router.post('/verify-payment', requireAuth, async (req, res, next) => {
     try {
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = razorpayVerifySchema.parse(req.body);
 
@@ -237,7 +253,7 @@ export function purchasesRouter(prisma) {
   });
 
 
-  router.get('/me', async (req, res, next) => {
+  router.get('/me', requireAuth, async (req, res, next) => {
     try {
       // Use the composite index for optimal performance
       const list = await prisma.purchase.findMany({
