@@ -69,7 +69,17 @@ async function startServer() {
         allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
       })
     );
-    app.use(rateLimit({ windowMs: 60 * 1000, max: 120 }));
+    app.use(rateLimit({ 
+      windowMs: 60 * 1000, 
+      max: 120,
+      standardHeaders: true,
+      legacyHeaders: false,
+      trustProxy: true,
+      skip: (req) => {
+        // Skip rate limiting for health checks
+        return req.path === '/api/health' || req.path === '/';
+      }
+    }));
 
     // Simple root endpoint for basic connectivity test
     app.get("/", (req, res) => {
@@ -79,6 +89,37 @@ async function startServer() {
         timestamp: new Date().toISOString(),
         version: "1.0.0",
       });
+    });
+
+    // Health check endpoint (bypasses rate limiting)
+    app.get("/api/health", async (req, res) => {
+      try {
+        // Test database connection
+        await prisma.$queryRaw`SELECT 1`;
+        
+        res.json({
+          ok: true,
+          time: new Date().toISOString(),
+          database: "connected",
+          adminCount: await prisma.user.count({ where: { role: "ADMIN" } }),
+          userCount: await prisma.user.count(),
+          env: process.env.NODE_ENV || "development",
+          prismaStatus: "INITIALIZED",
+          razorpay: {
+            configured: !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+            hasKeyId: !!process.env.RAZORPAY_KEY_ID,
+            hasKeySecret: !!process.env.RAZORPAY_KEY_SECRET,
+            instance: true
+          }
+        });
+      } catch (error) {
+        res.status(500).json({
+          ok: false,
+          time: new Date().toISOString(),
+          error: error.message,
+          database: "disconnected"
+        });
+      }
     });
 
     // Handle favicon requests to prevent 404s

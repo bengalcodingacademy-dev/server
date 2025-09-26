@@ -25,7 +25,7 @@ const upsertCourseSchema = z.object({
   aboutCourse: z.string().optional(),
   courseIncludes: z.any().optional(),
   // Monthly payment fields
-  durationMonths: z.number().int().positive().optional(),
+  durationMonths: z.number().int().min(0).optional(),
   monthlyFeeRupees: z.number().nonnegative().optional(),
   isMonthlyPayment: z.boolean().optional(),
   isActive: z.boolean().optional()

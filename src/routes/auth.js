@@ -41,7 +41,15 @@ export function authRouter(prisma) {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || 587),
     secure: false,
-    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
+    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+    connectionTimeout: 60000, // 60 seconds
+    greetingTimeout: 30000,   // 30 seconds
+    socketTimeout: 60000,     // 60 seconds
+    pool: true,               // Use connection pooling
+    maxConnections: 5,        // Max concurrent connections
+    maxMessages: 100,         // Max messages per connection
+    rateDelta: 20000,         // Rate limiting
+    rateLimit: 5              // Max 5 messages per rateDelta
   });
 
   router.post('/register', asyncHandler(async (req, res, next) => {
@@ -49,14 +57,32 @@ export function authRouter(prisma) {
     
     // Check if user already exists (verified) by email
     const existingByEmail = await prisma.user.findUnique({ where: { email } });
-    if (existingByEmail && existingByEmail.emailVerifiedAt) {
-      throw new AppError('Email already registered', 400, ErrorTypes.CONFLICT);
+    if (existingByEmail) {
+      console.log(`🔍 Email ${email} found:`, {
+        id: existingByEmail.id,
+        email: existingByEmail.email,
+        emailVerifiedAt: existingByEmail.emailVerifiedAt,
+        phoneVerifiedAt: existingByEmail.phoneVerifiedAt
+      });
+      
+      if (existingByEmail.emailVerifiedAt) {
+        throw new AppError('Email already registered', 400, ErrorTypes.CONFLICT);
+      }
     }
 
     // Check if phone number already exists in verified users
     const existingByPhone = await prisma.user.findUnique({ where: { phone } });
-    if (existingByPhone && existingByPhone.emailVerifiedAt) {
-      throw new AppError('Phone number already registered', 400, ErrorTypes.CONFLICT);
+    if (existingByPhone) {
+      console.log(`🔍 Phone ${phone} found:`, {
+        id: existingByPhone.id,
+        email: existingByPhone.email,
+        emailVerifiedAt: existingByPhone.emailVerifiedAt,
+        phoneVerifiedAt: existingByPhone.phoneVerifiedAt
+      });
+      
+      if (existingByPhone.emailVerifiedAt) {
+        throw new AppError('Phone number already registered', 400, ErrorTypes.CONFLICT);
+      }
     }
 
     // Clean up any unverified users with same email/phone
@@ -97,7 +123,8 @@ export function authRouter(prisma) {
     let emailSent = false;
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        await transporter.sendMail({
+        // Add timeout wrapper for email sending
+        const emailPromise = transporter.sendMail({
           to: email,
           from: process.env.MAIL_FROM || process.env.SMTP_USER,
           subject: 'Verify your email - Bengal Coding Academy',
@@ -116,11 +143,19 @@ export function authRouter(prisma) {
             </div>
           `
         });
+        
+        // Add timeout to email sending
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Email sending timeout')), 30000)
+        );
+        
+        await Promise.race([emailPromise, timeoutPromise]);
         emailSent = true;
         console.log(`✅ Verification email sent successfully to: ${email}`);
       } catch (err) {
-        console.error('❌ Failed to send verification email:', err);
+        console.error('❌ Failed to send verification email:', err.message || err);
         emailSent = false;
+        // Don't throw error - continue with registration even if email fails
       }
     } else {
       console.log('⚠️ SMTP not configured - email verification code for', email, 'is:', emailToken);
