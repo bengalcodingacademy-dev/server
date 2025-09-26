@@ -69,6 +69,14 @@ export const createOrder = async (orderData) => {
       notes: orderData.notes || {},
     };
 
+    console.log('🔧 Razorpay order options:', {
+      amount: options.amount,
+      currency: options.currency,
+      receipt: options.receipt,
+      amountType: typeof options.amount,
+      amountValid: Number.isInteger(options.amount) && options.amount > 0
+    });
+
     const order = await razorpayInstance.orders.create(options);
     return order;
   } catch (error) {

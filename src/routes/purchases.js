@@ -119,8 +119,17 @@ export function purchasesRouter(prisma) {
       });
 
       // Create Razorpay order
+      // Ensure proper decimal handling for paise conversion
+      const amountInPaise = Math.round(parseFloat(amountRupees.toFixed(2)) * 100);
+      console.log(`💰 Amount conversion: ${amountRupees} rupees = ${amountInPaise} paise`);
+      
+      // Validate paise amount
+      if (amountInPaise <= 0) {
+        return res.status(400).json({ error: 'Invalid amount for payment' });
+      }
+      
       const orderData = {
-        amount: Math.round(amountRupees * 100), // Convert rupees to paise for Razorpay
+        amount: amountInPaise, // Convert rupees to paise for Razorpay
         currency: 'INR',
         receipt: `p_${purchase.id.slice(-8)}`,
         notes: {
@@ -134,6 +143,12 @@ export function purchasesRouter(prisma) {
         }
       };
 
+      console.log('📋 Razorpay order data:', {
+        amount: orderData.amount,
+        currency: orderData.currency,
+        receipt: orderData.receipt
+      });
+
       const razorpayOrder = await createOrder(orderData);
 
       // Update purchase with Razorpay order ID
@@ -143,7 +158,7 @@ export function purchasesRouter(prisma) {
       });
 
       res.json({
-        order: razorpayOrder,
+        ...razorpayOrder,  // Spread Razorpay order properties directly
         purchase: {
           id: purchase.id,
           amountRupees: purchase.amountRupees,
