@@ -37,15 +37,12 @@ const loginSchema = z.object({
 
 export function authRouter(prisma) {
   const router = express.Router();
-  // Simple SMTP transporter configuration
+  // Simple SMTP transporter configuration - no timeouts or rate limiting
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || 587),
     secure: false,
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-    connectionTimeout: 30000,  // 30 seconds
-    greetingTimeout: 15000,    // 15 seconds
-    socketTimeout: 30000,      // 30 seconds
     tls: {
       rejectUnauthorized: false // Allow self-signed certificates
     }
@@ -123,6 +120,8 @@ export function authRouter(prisma) {
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
         console.log(`📧 Sending verification email to: ${email}`);
+        console.log(`📧 SMTP Config: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
+        console.log(`📧 SMTP User: ${process.env.SMTP_USER}`);
         
         await transporter.sendMail({
           to: email,
@@ -148,6 +147,15 @@ export function authRouter(prisma) {
         console.log(`✅ Verification email sent successfully to: ${email}`);
       } catch (err) {
         console.error('❌ Failed to send verification email:', err.message || err);
+        console.error('❌ SMTP Error details:', {
+          code: err.code,
+          command: err.command,
+          response: err.response,
+          errno: err.errno,
+          syscall: err.syscall,
+          address: err.address,
+          port: err.port
+        });
         emailSent = false;
         // Don't throw error - continue with registration even if email fails
       }
