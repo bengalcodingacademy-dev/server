@@ -18,6 +18,7 @@ import { youtubeVideosRouter } from "./routes/youtubeVideos.js";
 import { adminRouter } from "./routes/admin.js";
 import { meRouter } from "./routes/me.js";
 import { courseContentRouter } from "./routes/courseContent.js";
+import { visitorsRouter } from "./routes/visitors.js";
 import otpRoutes from "./routes/otp.js";
 
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
@@ -237,6 +238,7 @@ async function startServer() {
     app.use("/api/announcements", announcementsRouter(prisma));
     app.use("/api/testimonials", testimonialsRouter(prisma));
     app.use("/api/youtube-videos", youtubeVideosRouter(prisma));
+    app.use("/api/visitors", visitorsRouter());
     app.use("/api/me", meRouter(prisma));
     app.use("/api/course-content", requireAuth, courseContentRouter(prisma));
 
