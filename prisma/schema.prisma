@@ -258,3 +258,15 @@ enum MeetingStatus {
   APPROVED
   DECLINED
 }
+
+model UniqueVisitor {
+  id        String   @id @default(uuid())
+  ipAddress String
+  userAgent String?
+  date      DateTime @default(now()) @db.Date
+  createdAt DateTime @default(now())
+
+  @@unique([ipAddress, date])
+  @@index([date])
+  @@index([ipAddress])
+}
