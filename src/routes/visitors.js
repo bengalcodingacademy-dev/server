@@ -10,16 +10,37 @@ export function visitorsRouter() {
   // Track unique visitor
   router.post('/track', async (req, res, next) => {
     try {
-      const ipAddress = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
-      const userAgent = req.get('User-Agent');
+      // Get real IP address from various headers (for reverse proxy setup)
+      const ipAddress = req.headers['x-forwarded-for'] || 
+                       req.headers['x-real-ip'] || 
+                       req.connection.remoteAddress || 
+                       req.socket.remoteAddress ||
+                       req.ip ||
+                       '127.0.0.1';
+      
+      // Handle comma-separated IPs (x-forwarded-for can contain multiple IPs)
+      const realIp = ipAddress.split(',')[0].trim();
+      
+      const userAgent = req.get('User-Agent') || 'Unknown';
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Start of day
+
+      console.log('Tracking visitor:', {
+        ipAddress: realIp,
+        userAgent: userAgent.substring(0, 100), // Truncate for logging
+        date: today.toISOString(),
+        headers: {
+          'x-forwarded-for': req.headers['x-forwarded-for'],
+          'x-real-ip': req.headers['x-real-ip'],
+          'x-client-ip': req.headers['x-client-ip']
+        }
+      });
 
       // Check if this IP already visited today
       const existingVisitor = await prisma.uniqueVisitor.findUnique({
         where: {
           ipAddress_date: {
-            ipAddress: ipAddress,
+            ipAddress: realIp,
             date: today
           }
         }
@@ -29,22 +50,26 @@ export function visitorsRouter() {
         // Create new visitor record
         await prisma.uniqueVisitor.create({
           data: {
-            ipAddress: ipAddress,
+            ipAddress: realIp,
             userAgent: userAgent,
             date: today
           }
         });
         
+        console.log('New visitor tracked:', realIp);
         res.json({ 
           success: true, 
           message: 'Visitor tracked',
-          isNewVisitor: true 
+          isNewVisitor: true,
+          ipAddress: realIp
         });
       } else {
+        console.log('Visitor already tracked today:', realIp);
         res.json({ 
           success: true, 
           message: 'Visitor already tracked today',
-          isNewVisitor: false 
+          isNewVisitor: false,
+          ipAddress: realIp
         });
       }
     } catch (error) {
@@ -186,6 +211,38 @@ export function visitorsRouter() {
       });
     } catch (error) {
       console.error('Error getting visitor stats:', error);
+      next(error);
+    }
+  });
+
+  // Test endpoint to check visitor tracking (for debugging)
+  router.get('/test', async (req, res, next) => {
+    try {
+      const ipAddress = req.headers['x-forwarded-for'] || 
+                       req.headers['x-real-ip'] || 
+                       req.connection.remoteAddress || 
+                       req.socket.remoteAddress ||
+                       req.ip ||
+                       '127.0.0.1';
+      
+      const realIp = ipAddress.split(',')[0].trim();
+      
+      res.json({
+        success: true,
+        message: 'Test endpoint working',
+        detectedIp: realIp,
+        headers: {
+          'x-forwarded-for': req.headers['x-forwarded-for'],
+          'x-real-ip': req.headers['x-real-ip'],
+          'x-client-ip': req.headers['x-client-ip'],
+          'user-agent': req.headers['user-agent']
+        },
+        reqIp: req.ip,
+        connectionRemoteAddress: req.connection.remoteAddress,
+        socketRemoteAddress: req.socket.remoteAddress
+      });
+    } catch (error) {
+      console.error('Error in test endpoint:', error);
       next(error);
     }
   });
