@@ -142,14 +142,10 @@ export function visitorsRouter() {
 
       res.json({
         success: true,
-        data: {
-          monthly: {
-            year: parseInt(year),
-            month: parseInt(month),
-            totalVisitors,
-            dailyData: completeData
-          }
-        }
+        analytics: completeData.map(day => ({
+          date: day.date,
+          count: day.visitors
+        }))
       });
     } catch (error) {
       console.error('Error getting visitor analytics:', error);
@@ -202,12 +198,10 @@ export function visitorsRouter() {
 
       res.json({
         success: true,
-        data: {
-          today: todayVisitors,
-          week: weekVisitors,
-          month: monthVisitors,
-          allTime: allTimeVisitors
-        }
+        today: todayVisitors,
+        thisWeek: weekVisitors,
+        thisMonth: monthVisitors,
+        allTime: allTimeVisitors
       });
     } catch (error) {
       console.error('Error getting visitor stats:', error);
