@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 
 import { authRouter } from "./routes/auth.js";
 import { coursesRouter } from "./routes/courses.js";
-import { purchasesRouter } from "./routes/purchases.js";
+// import { purchasesRouter } from "./routes/purchases.js";
 import { webinarsRouter } from "./routes/webinars.js";
 import { announcementsRouter } from "./routes/announcements.js";
 import { testimonialsRouter } from "./routes/testimonials.js";
@@ -23,6 +23,7 @@ import otpRoutes from "./routes/otp.js";
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
 import { getRazorpayStatus } from "./services/razorpay.js";
 import { errorHandler, AppError, ErrorTypes } from "./middleware/errorHandler.js";
+import purchasesRouter from "./routes/purchases.js";
 
 const app = express();
 
@@ -73,8 +74,8 @@ async function startServer() {
         allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
       })
     );
-    app.use(rateLimit({ 
-      windowMs: 60 * 1000, 
+    app.use(rateLimit({
+      windowMs: 60 * 1000,
       max: 120,
       standardHeaders: true,
       legacyHeaders: false,
@@ -100,7 +101,7 @@ async function startServer() {
       try {
         // Test database connection
         await prisma.$queryRaw`SELECT 1`;
-        
+
         res.json({
           ok: true,
           time: new Date().toISOString(),
@@ -230,7 +231,7 @@ async function startServer() {
     app.use("/api/auth", authRouter(prisma));
     app.use("/api/otp", otpRoutes);
     app.use("/api/courses", coursesRouter(prisma));
-    app.use("/api/purchases", requireAuth, purchasesRouter(prisma));
+    app.use("/api/purchases", requireAuth, purchasesRouter);
     app.use("/api/webinars", webinarsRouter(prisma));
     app.use("/api/announcements", announcementsRouter(prisma));
     app.use("/api/testimonials", testimonialsRouter(prisma));
