@@ -62,6 +62,9 @@ model Course {
   isMonthlyPayment Boolean           @default(false)
   priceRupees      Decimal           @db.Decimal(10, 2)
   monthlyFeeRupees Decimal?          @db.Decimal(10, 2)
+  programmingLanguage String?        @default("C++")
+  classSchedule    String?           @default("[Monday, Wednesday, Saturday, Sunday]")
+  classTimings     String?           @default("8:30pm - 11pm")
   announcements    Announcement[]
   coupons          Coupon[]
   monthlyPurchases MonthlyPurchase[]

@@ -2,7 +2,8 @@ import express from "express";
 import { createOrder, verifyPayment } from "../services/razorpay.js";
 import { v4 as uuidv4 } from "uuid";
 
-const router = express.Router();
+export default function purchasesRouter(prisma) {
+  const router = express.Router();
 
 // Verify payment
 router.post("/verify-payment", async (req, res) => {
@@ -41,9 +42,56 @@ router.post("/create-order", async (req, res) => {
   try {
     const { courseId, isMonthlyPayment, monthNumber, totalMonths } = req.body;
 
-    // Example calculation
-    const amountRupees = isMonthlyPayment ? 2000 : 4000;
-    const amountPaise = amountRupees * 100;
+    // Fetch course details from database
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: {
+        id: true,
+        title: true,
+        priceRupees: true,
+        monthlyFeeRupees: true,
+        isMonthlyPayment: true
+      }
+    });
+
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Calculate amount based on course pricing
+    let amountRupees;
+    if (isMonthlyPayment && course.isMonthlyPayment) {
+      amountRupees = parseFloat(course.monthlyFeeRupees) || 0;
+      console.log('💰 Monthly payment calculation:', {
+        courseId,
+        monthlyFeeRupees: course.monthlyFeeRupees,
+        parsedAmount: amountRupees,
+        isMonthlyPayment,
+        courseIsMonthlyPayment: course.isMonthlyPayment
+      });
+    } else {
+      amountRupees = parseFloat(course.priceRupees) || 0;
+      console.log('💰 Full payment calculation:', {
+        courseId,
+        priceRupees: course.priceRupees,
+        parsedAmount: amountRupees,
+        isMonthlyPayment,
+        courseIsMonthlyPayment: course.isMonthlyPayment
+      });
+    }
+
+    if (amountRupees <= 0) {
+      return res.status(400).json({ error: 'Invalid course pricing' });
+    }
+
+    const amountPaise = Math.round(amountRupees * 100);
+    
+    console.log('💳 Final payment amount:', {
+      amountRupees,
+      amountPaise,
+      isMonthlyPayment,
+      monthNumber
+    });
 
     const receipt = `p_${uuidv4().slice(0, 8)}`;
 
@@ -78,4 +126,5 @@ router.post("/create-order", async (req, res) => {
   }
 });
 
-export default router;
+  return router;
+}

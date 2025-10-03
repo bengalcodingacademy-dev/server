@@ -19,6 +19,7 @@ import { adminRouter } from "./routes/admin.js";
 import { meRouter } from "./routes/me.js";
 import { courseContentRouter } from "./routes/courseContent.js";
 import { visitorsRouter } from "./routes/visitors.js";
+import { dmlRouter } from "./routes/dml.js";
 import otpRoutes from "./routes/otp.js";
 
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
@@ -233,7 +234,7 @@ async function startServer() {
     app.use("/api/auth", authRouter(prisma));
     app.use("/api/otp", otpRoutes);
     app.use("/api/courses", coursesRouter(prisma));
-    app.use("/api/purchases", requireAuth, purchasesRouter);
+    app.use("/api/purchases", requireAuth, purchasesRouter(prisma));
     app.use("/api/webinars", webinarsRouter(prisma));
     app.use("/api/announcements", announcementsRouter(prisma));
     app.use("/api/testimonials", testimonialsRouter(prisma));
@@ -244,6 +245,7 @@ async function startServer() {
 
     // Admin scoped
     app.use("/api/admin", requireAuth, requireAdmin, adminRouter(prisma));
+    app.use("/api/admin/dml", requireAuth, requireAdmin, dmlRouter(prisma));
 
     // 404 handler - must be before error handler
     app.use((req, res, next) => {

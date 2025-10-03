@@ -127,7 +127,12 @@ export function meRouter(prisma) {
         email: user.email,
         role: user.role,
         age: user.age,
-        photoUrl: user.photoUrl,
+        photoUrl: user.photoUrl 
+          ? user.photoUrl.replace(
+              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+              'https://d270a3f3iqnh9i.cloudfront.net'
+            )
+          : user.photoUrl,
         status,
         totalPaidRupees: totalPaid,
         courses

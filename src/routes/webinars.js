@@ -35,9 +35,20 @@ export function webinarsRouter(prisma) {
         take: 20 // Limit results
       });
       
+      // Replace S3 URLs with CloudFront URLs
+      const itemsWithCloudFront = items.map(item => ({
+        ...item,
+        imageUrl: item.imageUrl 
+          ? item.imageUrl.replace(
+              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+              'https://d270a3f3iqnh9i.cloudfront.net'
+            )
+          : item.imageUrl
+      }));
+      
       // Set cache headers
       res.set('Cache-Control', 'public, max-age=60'); // Cache for 1 minute
-      res.json(items);
+      res.json(itemsWithCloudFront);
     } catch (e) { next(e); }
   });
 

@@ -28,6 +28,10 @@ const upsertCourseSchema = z.object({
   durationMonths: z.number().int().min(0).optional(),
   monthlyFeeRupees: z.number().nonnegative().optional(),
   isMonthlyPayment: z.boolean().optional(),
+  // Additional course details
+  programmingLanguage: z.string().optional(),
+  classSchedule: z.string().optional(),
+  classTimings: z.string().optional(),
   isActive: z.boolean().optional()
 });
 
@@ -61,18 +65,9 @@ export function adminRouter(prisma) {
     try {
       const courses = await prisma.course.findMany({
         where: { isActive: true },
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          imageUrl: true,
-          priceRupees: true,
-          shortDesc: true,
-          isMonthlyPayment: true,
-          durationMonths: true,
-          monthlyFeeRupees: true,
-          isActive: true,
-          createdAt: true
+        include: {
+          coupons: true,
+          testimonials: true
         },
         orderBy: { createdAt: 'desc' },
         take: 100 // Limit results
