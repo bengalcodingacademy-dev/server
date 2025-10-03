@@ -21,9 +21,20 @@ export function testimonialsRouter(prisma) {
         take: 20 // Limit results
       });
       
+      // Replace S3 URLs with CloudFront URLs
+      const testimonialsWithCloudFront = testimonials.map(testimonial => ({
+        ...testimonial,
+        studentImage: testimonial.studentImage 
+          ? testimonial.studentImage.replace(
+              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+              'https://d270a3f3iqnh9i.cloudfront.net'
+            )
+          : testimonial.studentImage
+      }));
+      
       // Set cache headers
       res.set('Cache-Control', 'public, max-age=300'); // Cache for 5 minutes
-      res.json(testimonials);
+      res.json(testimonialsWithCloudFront);
     } catch (e) { 
       next(e); 
     }
