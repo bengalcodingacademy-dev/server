@@ -5,16 +5,24 @@ const contentSchema = z.object({
   courseId: z.string().uuid(),
   monthNumber: z.number().int().positive(),
   topicName: z.string().min(1).max(200),
-  videoLink: z.string().url().optional().or(z.literal('')),
-  githubRepo: z.string().url().optional().or(z.literal('')),
+  videoLink: z.string().optional().refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
+    message: "Invalid URL format"
+  }),
+  githubRepo: z.string().optional().refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
+    message: "Invalid URL format"
+  }),
   notes: z.string().optional(),
   order: z.number().int().min(0).optional()
 });
 
 const updateContentSchema = z.object({
   topicName: z.string().min(1).max(200).optional(),
-  videoLink: z.string().url().optional().or(z.literal('')),
-  githubRepo: z.string().url().optional().or(z.literal('')),
+  videoLink: z.string().optional().refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
+    message: "Invalid URL format"
+  }),
+  githubRepo: z.string().optional().refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
+    message: "Invalid URL format"
+  }),
   notes: z.string().optional(),
   order: z.number().int().min(0).optional()
 });
@@ -88,20 +96,26 @@ export function courseContentRouter(prisma) {
   // Create new content
   router.post('/', async (req, res, next) => {
     try {
+      console.log('Creating course content:', req.body);
       const data = contentSchema.parse(req.body);
       
       const content = await prisma.courseContent.create({
         data
       });
       
+      console.log('Course content created successfully:', content.id);
       res.json(content);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      console.error('Error creating course content:', e);
+      next(e); 
+    }
   });
 
   // Update content
   router.put('/:id', async (req, res, next) => {
     try {
       const { id } = req.params;
+      console.log('Updating course content:', id, req.body);
       const data = updateContentSchema.parse(req.body);
       
       const content = await prisma.courseContent.update({
@@ -109,21 +123,30 @@ export function courseContentRouter(prisma) {
         data
       });
       
+      console.log('Course content updated successfully:', content.id);
       res.json(content);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      console.error('Error updating course content:', e);
+      next(e); 
+    }
   });
 
   // Delete content
   router.delete('/:id', async (req, res, next) => {
     try {
       const { id } = req.params;
+      console.log('Deleting course content with ID:', id);
       
-      await prisma.courseContent.delete({
+      const deletedContent = await prisma.courseContent.delete({
         where: { id }
       });
       
-      res.json({ success: true });
-    } catch (e) { next(e); }
+      console.log('Course content deleted successfully:', deletedContent.id);
+      res.json({ success: true, deletedId: id });
+    } catch (e) { 
+      console.error('Error deleting course content:', e);
+      next(e); 
+    }
   });
 
   // Reorder content within a month
