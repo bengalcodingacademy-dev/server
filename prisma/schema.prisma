@@ -24,6 +24,7 @@ model User {
   otpCode          String?
   otpExpiresAt     DateTime?
   photoUrl         String?
+  interestStatus   InterestStatus        @default(INTERESTED)
   meetingRequests  MeetingRequest[]
   monthlyPurchases MonthlyPurchase[]
   notifications    NotificationReceipt[]
@@ -260,6 +261,12 @@ enum MeetingStatus {
   PENDING
   APPROVED
   DECLINED
+}
+
+enum InterestStatus {
+  INTERESTED
+  NOT_INTERESTED
+  PURCHASED
 }
 
 model UniqueVisitor {

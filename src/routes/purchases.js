@@ -8,7 +8,7 @@ export default function purchasesRouter(prisma) {
 // Verify payment
 router.post("/verify-payment", async (req, res) => {
   try {
-    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature, courseId, isMonthlyPayment, monthNumber, totalMonths } = req.body;
 
     const isValid = verifyPayment(
       razorpayOrderId,
@@ -22,13 +22,77 @@ router.post("/verify-payment", async (req, res) => {
         .json({ success: false, error: "Invalid signature" });
     }
 
-    // ✅ Update purchase in DB (mock here)
-    const purchase = {
-      id: razorpayOrderId, // in real app, fetch by your DB ID
-      razorpayOrderId,
-      razorpayPaymentId,
-      status: "paid",
-    };
+    // Get user ID from the authenticated request
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "User not authenticated" });
+    }
+
+    // Fetch course details
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: {
+        id: true,
+        title: true,
+        priceRupees: true,
+        monthlyFeeRupees: true,
+        isMonthlyPayment: true
+      }
+    });
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found" });
+    }
+
+    // Calculate amount
+    let amountRupees;
+    if (isMonthlyPayment && course.isMonthlyPayment) {
+      amountRupees = parseFloat(course.monthlyFeeRupees) || 0;
+    } else {
+      amountRupees = parseFloat(course.priceRupees) || 0;
+    }
+
+    // Create purchase record in database
+    const purchase = await prisma.purchase.create({
+      data: {
+        userId,
+        courseId,
+        amountRupees: String(amountRupees),
+        status: "PAID",
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+        isMonthlyPayment: isMonthlyPayment || false,
+        monthNumber: monthNumber || null,
+        totalMonths: totalMonths || null
+      }
+    });
+
+    // Update user's interest status to PURCHASED
+    await prisma.user.update({
+      where: { id: userId },
+      data: { interestStatus: 'PURCHASED' }
+    });
+
+    // If it's a monthly payment, also create a MonthlyPurchase record
+    if (isMonthlyPayment && monthNumber) {
+      const dueDate = new Date();
+      dueDate.setMonth(dueDate.getMonth() + 1); // Next month
+
+      await prisma.monthlyPurchase.create({
+        data: {
+          userId,
+          courseId,
+          monthNumber,
+          amountRupees: String(amountRupees),
+          status: "PAID",
+          dueDate,
+          razorpayOrderId,
+          razorpayPaymentId,
+          razorpaySignature
+        }
+      });
+    }
 
     res.json({ success: true, purchase });
   } catch (error) {

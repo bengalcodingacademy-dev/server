@@ -267,6 +267,55 @@ export function dmlRouter(prisma) {
   });
 
   // Get DML Logs (for audit purposes)
+  // Update User Interest Status
+  router.post('/update-interest-status', requireAdmin, async (req, res, next) => {
+    try {
+      const schema = z.object({
+        userEmail: z.string().email(),
+        interestStatus: z.enum(['INTERESTED', 'NOT_INTERESTED', 'PURCHASED'])
+      });
+
+      const { userEmail, interestStatus } = schema.parse(req.body);
+
+      // Find user by email
+      const user = await prisma.user.findUnique({
+        where: { email: userEmail }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Update user's interest status
+      const updatedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: { interestStatus },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          interestStatus: true,
+          createdAt: true
+        }
+      });
+
+      // Log the DML operation
+      console.log(`DML: Interest status updated to ${interestStatus} for ${userEmail} by admin ${req.user.email}`);
+
+      res.json({
+        success: true,
+        message: `User interest status updated to ${interestStatus}`,
+        user: updatedUser
+      });
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Invalid input data', details: error.errors });
+      }
+      next(error);
+    }
+  });
+
   router.get('/logs', requireAdmin, async (req, res, next) => {
     try {
       // This would typically come from a separate logs table
