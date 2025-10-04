@@ -286,8 +286,9 @@ export function adminRouter(prisma) {
       const data = announcementSchema.parse(req.body);
       const ann = await prisma.announcement.create({ data });
       
-      // If announcement is course-specific, create notification receipts for users who purchased that course
+      // Create notification receipts for users
       if (data.courseId) {
+        // Course-specific announcement: create receipts for users who purchased that course
         const coursePurchases = await prisma.purchase.findMany({
           where: { courseId: data.courseId, status: 'PAID' },
           select: { userId: true }
@@ -302,10 +303,45 @@ export function adminRouter(prisma) {
         if (receipts.length > 0) {
           await prisma.notificationReceipt.createMany({ data: receipts });
         }
+      } else {
+        // Global announcement: create receipts for all users
+        const allUsers = await prisma.user.findMany({
+          select: { id: true }
+        });
+        
+        const receipts = allUsers.map(user => ({
+          userId: user.id,
+          announcementId: ann.id,
+          isRead: false
+        }));
+        
+        if (receipts.length > 0) {
+          await prisma.notificationReceipt.createMany({ data: receipts });
+        }
       }
       
       res.json(ann);
     } catch (e) { next(e); }
+  });
+
+  // Delete announcement
+  router.delete('/announcements/:id', async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      
+      // First delete all notification receipts for this announcement
+      await prisma.notificationReceipt.deleteMany({
+        where: { announcementId: id }
+      });
+      
+      // Then delete the announcement itself
+      await prisma.announcement.delete({ where: { id } });
+      
+      res.json({ success: true, message: 'Announcement deleted successfully' });
+    } catch (e) { 
+      console.error('Error deleting announcement:', e);
+      next(e); 
+    }
   });
 
   // Analytics

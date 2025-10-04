@@ -1,6 +1,7 @@
 import express from 'express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import jwt from 'jsonwebtoken';
 
 export function meRouter(prisma) {
@@ -152,6 +153,12 @@ export function meRouter(prisma) {
       res.set('Pragma', 'no-cache');
       res.set('Expires', '0');
       
+      // Debug: Log the data to see what's happening
+      console.log('DEBUG: All purchases (including non-PAID):', allPurchases.length);
+      console.log('DEBUG: PAID purchases only:', allPurchases.filter(p=>p.status==='PAID').length);
+      console.log('DEBUG: Courses in final response:', courses.length);
+      console.log('DEBUG: Course data:', JSON.stringify(courses, null, 2));
+      
       res.json({
         id: user.id,
         name: user.name,
@@ -243,29 +250,28 @@ export function meRouter(prisma) {
       const key = `users/${req.user.id}/${fileName}`;
       console.log('Generated S3 key:', key);
       
-      const command = new PutObjectCommand({
+      // Use createPresignedPost (same as admin endpoint) since bucket has ACLs disabled
+      const post = await createPresignedPost(s3Client, {
         Bucket: process.env.S3_BUCKET,
         Key: key,
-        ContentType: fileType
+        Conditions: [
+          ['starts-with', '$Content-Type', '']
+        ],
+        Fields: { 'Content-Type': fileType || 'application/octet-stream' },
+        Expires: 300 // 5 minutes
       });
 
-      console.log('PutObjectCommand created:', {
-        Bucket: command.input.Bucket,
-        Key: command.input.Key,
-        ContentType: command.input.ContentType
-      });
+      // Use CloudFront URL for public access (same pattern as other images)
+      const publicUrl = `https://d270a3f3iqnh9i.cloudfront.net/${key}`;
 
-      const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 }); // 5 minutes
-      const publicUrl = `${process.env.S3_PUBLIC_BASE}${key}`;
-
-      console.log('Generated presigned URL:', presignedUrl);
-      console.log('Generated public URL:', publicUrl);
+      console.log('Generated presigned POST:', post);
+      console.log('Generated public URL (CloudFront):', publicUrl);
       console.log('=== END S3 PRESIGN DEBUG ===');
 
       res.json({
-        presignedUrl,
-        publicUrl,
-        key
+        mode: 'post',
+        post: post,
+        publicUrl: publicUrl
       });
     } catch (error) {
       console.error('=== S3 PRESIGN ERROR ===');
