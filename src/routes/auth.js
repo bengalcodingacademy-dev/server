@@ -250,6 +250,7 @@ export function authRouter(prisma) {
                 age: tempUserData.age,
                 role: tempUserData.role,
                 emailVerifiedAt: new Date(),
+                interestStatus: 'INTERESTED',
                 createdAt: tempUserData.createdAt
               }
             });
