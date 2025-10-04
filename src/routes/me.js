@@ -69,8 +69,8 @@ export function meRouter(prisma) {
 
   router.get('/summary', requireAuth, async (req, res, next) => {
     try {
-      // Optimize by only selecting needed fields and using selective includes
-      const user = await prisma.user.findUnique({ 
+      // Get user data
+      const user = await prisma.user.findUnique({
         where: { id: req.user.id },
         select: {
           id: true,
@@ -78,36 +78,64 @@ export function meRouter(prisma) {
           email: true,
           role: true,
           age: true,
-          photoUrl: true,
-          purchases: {
+          photoUrl: true
+        }
+      });
+
+      // Get regular purchases
+      const purchases = await prisma.purchase.findMany({
+        where: { userId: req.user.id },
+        select: {
+          status: true,
+          amountRupees: true,
+          course: {
             select: {
-              status: true,
-              amountRupees: true,
-              course: {
-                select: {
-                  id: true,
-                  title: true,
-                  imageUrl: true,
-                  shortDesc: true,
-                  isMonthlyPayment: true,
-                  durationMonths: true
-                }
-              }
+              id: true,
+              title: true,
+              slug: true,
+              imageUrl: true,
+              shortDesc: true,
+              isMonthlyPayment: true,
+              durationMonths: true
             }
           }
         }
       });
+
+      // Get monthly purchases
+      const monthlyPurchases = await prisma.monthlyPurchase.findMany({
+        where: { userId: req.user.id },
+        select: {
+          status: true,
+          amountRupees: true,
+          course: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              imageUrl: true,
+              shortDesc: true,
+              isMonthlyPayment: true,
+              durationMonths: true
+            }
+          }
+        }
+      });
+
+      // Combine all purchases
+      const allPurchases = [...purchases, ...monthlyPurchases];
       
-      const totalPaid = user.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a + parseFloat(b.amountRupees), 0);
+      const totalPaid = allPurchases.filter(p=>p.status==='PAID').reduce((a,b)=>a + parseFloat(b.amountRupees), 0);
       
       // Group purchases by course to avoid duplicate course entries
       const courseMap = new Map();
-      user.purchases.filter(p=>p.status==='PAID').forEach(purchase => {
+      allPurchases.filter(p=>p.status==='PAID').forEach(purchase => {
         const courseId = purchase.course.id;
         if (!courseMap.has(courseId)) {
           courseMap.set(courseId, {
             id: purchase.course.id, 
             title: purchase.course.title,
+            slug: purchase.course.slug,
             imageUrl: purchase.course.imageUrl,
             shortDesc: purchase.course.shortDesc,
             isMonthlyPayment: purchase.course.isMonthlyPayment,
@@ -117,10 +145,13 @@ export function meRouter(prisma) {
       });
       
       const courses = Array.from(courseMap.values());
-      const status = user.purchases.length === 0 ? 'NEW' : (courses.length > 0 ? 'ENROLLED' : 'PENDING');
+      const status = allPurchases.length === 0 ? 'NEW' : (courses.length > 0 ? 'ENROLLED' : 'PENDING');
       
       // Temporarily disable caching to debug the issue
-      // res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      
       res.json({
         id: user.id,
         name: user.name,
