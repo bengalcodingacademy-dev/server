@@ -5,6 +5,59 @@ import { v4 as uuidv4 } from "uuid";
 export default function purchasesRouter(prisma) {
   const router = express.Router();
 
+  // Get user's purchases (both regular and monthly)
+  router.get('/me', async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      // Get regular purchases
+      const purchases = await prisma.purchase.findMany({
+        where: { userId },
+        include: {
+          course: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              imageUrl: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Get monthly purchases
+      const monthlyPurchases = await prisma.monthlyPurchase.findMany({
+        where: { userId },
+        include: {
+          course: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              imageUrl: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Combine both types of purchases
+      const allPurchases = [
+        ...purchases.map(p => ({ ...p, type: 'regular' })),
+        ...monthlyPurchases.map(p => ({ ...p, type: 'monthly' }))
+      ];
+
+      res.json(allPurchases);
+    } catch (error) {
+      console.error('Error fetching user purchases:', error);
+      res.status(500).json({ error: 'Failed to fetch purchases' });
+    }
+  });
+
 // Verify payment
 router.post("/verify-payment", async (req, res) => {
   try {
