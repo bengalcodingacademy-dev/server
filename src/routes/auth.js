@@ -294,13 +294,229 @@ export function authRouter(prisma) {
         const token = crypto.randomBytes(32).toString('hex');
         const exp = new Date(Date.now() + 1000 * 60 * 30); // 30 mins
         await prisma.user.update({ where: { id: user.id }, data: { resetToken: token, resetTokenExp: exp } });
-        const resetUrl = `${process.env.WEB_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
+        const resetUrl = `${process.env.WEB_URL || 'https://bengalcodingacademy.com'}/reset-password?token=${token}`;
         if (process.env.SMTP_USER) {
+          const emailHtml = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Reset Your Password - Bengal Coding Academy</title>
+              <style>
+                body {
+                  margin: 0;
+                  padding: 0;
+                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                  background-color: #f8fafc;
+                  line-height: 1.6;
+                }
+                .container {
+                  max-width: 600px;
+                  margin: 0 auto;
+                  background-color: #ffffff;
+                  border-radius: 12px;
+                  overflow: hidden;
+                  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+                }
+                .header {
+                  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+                  padding: 40px 30px;
+                  text-align: center;
+                  position: relative;
+                }
+                .header::before {
+                  content: '';
+                  position: absolute;
+                  top: 0;
+                  left: 0;
+                  right: 0;
+                  bottom: 0;
+                  background: linear-gradient(45deg, rgba(6, 182, 212, 0.1) 0%, rgba(253, 176, 0, 0.1) 100%);
+                }
+                .logo {
+                  position: relative;
+                  z-index: 1;
+                  color: #ffffff;
+                  font-size: 28px;
+                  font-weight: bold;
+                  margin-bottom: 8px;
+                  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+                }
+                .tagline {
+                  position: relative;
+                  z-index: 1;
+                  color: #cbd5e1;
+                  font-size: 14px;
+                  margin: 0;
+                }
+                .content {
+                  padding: 40px 30px;
+                }
+                .title {
+                  color: #0f172a;
+                  font-size: 24px;
+                  font-weight: 700;
+                  margin: 0 0 16px 0;
+                  text-align: center;
+                }
+                .subtitle {
+                  color: #64748b;
+                  font-size: 16px;
+                  margin: 0 0 32px 0;
+                  text-align: center;
+                }
+                .reset-button {
+                  display: inline-block;
+                  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+                  color: #ffffff;
+                  text-decoration: none;
+                  padding: 16px 32px;
+                  border-radius: 8px;
+                  font-weight: 600;
+                  font-size: 16px;
+                  text-align: center;
+                  margin: 24px 0;
+                  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+                  transition: all 0.3s ease;
+                }
+                .reset-button:hover {
+                  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+                  box-shadow: 0 6px 16px rgba(6, 182, 212, 0.4);
+                  transform: translateY(-2px);
+                }
+                .button-container {
+                  text-align: center;
+                  margin: 32px 0;
+                }
+                .info-box {
+                  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+                  border-left: 4px solid #06b6d4;
+                  padding: 20px;
+                  margin: 24px 0;
+                  border-radius: 0 8px 8px 0;
+                }
+                .info-text {
+                  color: #475569;
+                  font-size: 14px;
+                  margin: 0;
+                }
+                .footer {
+                  background-color: #f8fafc;
+                  padding: 30px;
+                  text-align: center;
+                  border-top: 1px solid #e2e8f0;
+                }
+                .footer-text {
+                  color: #64748b;
+                  font-size: 14px;
+                  margin: 0 0 16px 0;
+                }
+                .social-links {
+                  margin: 20px 0;
+                }
+                .social-link {
+                  display: inline-block;
+                  margin: 0 8px;
+                  color: #06b6d4;
+                  text-decoration: none;
+                  font-size: 14px;
+                }
+                .divider {
+                  height: 1px;
+                  background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
+                  margin: 24px 0;
+                }
+                .security-note {
+                  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+                  border: 1px solid #f59e0b;
+                  border-radius: 8px;
+                  padding: 16px;
+                  margin: 24px 0;
+                }
+                .security-text {
+                  color: #92400e;
+                  font-size: 13px;
+                  margin: 0;
+                  text-align: center;
+                }
+                @media (max-width: 600px) {
+                  .container {
+                    margin: 0;
+                    border-radius: 0;
+                  }
+                  .header, .content, .footer {
+                    padding: 20px;
+                  }
+                  .title {
+                    font-size: 20px;
+                  }
+                  .reset-button {
+                    padding: 14px 24px;
+                    font-size: 14px;
+                  }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <div class="logo">🐅 Bengal Coding Academy</div>
+                  <p class="tagline">Empowering Developers, Building Futures</p>
+                </div>
+                
+                <div class="content">
+                  <h1 class="title">Reset Your Password</h1>
+                  <p class="subtitle">We received a request to reset your password for your Bengal Coding Academy account.</p>
+                  
+                  <div class="button-container">
+                    <a href="${resetUrl}" class="reset-button">Reset My Password</a>
+                  </div>
+                  
+                  <div class="info-box">
+                    <p class="info-text">
+                      <strong>If the button doesn't work:</strong> Copy and paste this link into your browser:<br>
+                      <a href="${resetUrl}" style="color: #06b6d4; word-break: break-all;">${resetUrl}</a>
+                    </p>
+                  </div>
+                  
+                  <div class="security-note">
+                    <p class="security-text">
+                      <strong>🔒 Security Note:</strong> This link will expire in 30 minutes for your security. 
+                      If you didn't request this password reset, please ignore this email.
+                    </p>
+                  </div>
+                  
+                  <div class="divider"></div>
+                  
+                  <p style="color: #64748b; font-size: 14px; text-align: center; margin: 0;">
+                    Need help? Contact our support team at 
+                    <a href="mailto:support@bengalcodingacademy.com" style="color: #06b6d4;">support@bengalcodingacademy.com</a>
+                  </p>
+                </div>
+                
+                <div class="footer">
+                  <p class="footer-text">
+                    © 2025 Bengal Coding Academy. All rights reserved.
+                  </p>
+                  <div class="social-links">
+                    <a href="https://bengalcodingacademy.com" class="social-link">Website</a>
+                    <a href="mailto:info@bengalcodingacademy.com" class="social-link">Contact</a>
+                  </div>
+                  <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                    This email was sent to ${email}. If you didn't request this, please ignore it.
+                  </p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `;
+          
           await transporter.sendMail({
             to: email,
             from: process.env.MAIL_FROM || process.env.SMTP_USER,
-            subject: 'Reset your Bengal Coding Academy password',
-            html: `<p>Click the link to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p>`
+            subject: '🔐 Reset Your Bengal Coding Academy Password',
+            html: emailHtml
           });
         }
       }
