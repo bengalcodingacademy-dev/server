@@ -30,6 +30,7 @@ const updateContentSchema = z.object({
 export function courseContentRouter(prisma) {
   const router = express.Router();
 
+
   // Get all content for a course
   router.get('/course/:courseId', async (req, res, next) => {
     try {
@@ -55,8 +56,10 @@ export function courseContentRouter(prisma) {
         ]
       });
       
-      // Set cache headers
-      res.set('Cache-Control', 'private, max-age=300'); // Cache for 5 minutes
+      // Set no-cache headers to ensure fresh data
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
       res.json(content);
     } catch (e) { next(e); }
   });
@@ -82,14 +85,63 @@ export function courseContentRouter(prisma) {
           notes: true,
           order: true,
           createdAt: true,
-          updatedAt: true
+          updatedAt: true,
+          quizExams: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              title: true,
+              durationMinutes: true,
+              totalMarks: true,
+              questions: {
+                select: {
+                  id: true,
+                  questionText: true,
+                  marks: true,
+                  difficulty: true
+                }
+              }
+            }
+          }
         },
         orderBy: { order: 'asc' }
       });
+
+      // Also get quiz exams for the entire month (not linked to specific lessons)
+      const monthQuizExams = await prisma.quizExam.findMany({
+        where: {
+          courseId,
+          monthNumber: month,
+          isActive: true,
+          lessonId: null // Quiz exams not linked to specific lessons
+        },
+        select: {
+          id: true,
+          title: true,
+          durationMinutes: true,
+          totalMarks: true,
+          questions: {
+            select: {
+              id: true,
+              questionText: true,
+              marks: true,
+              difficulty: true
+            }
+          }
+        }
+      });
+
+      // Add month-level quiz exams to each content item
+      const contentWithMonthQuizExams = content.map(item => ({
+        ...item,
+        quizExams: [...item.quizExams, ...monthQuizExams]
+      }));
       
-      // Set cache headers
-      res.set('Cache-Control', 'private, max-age=300'); // Cache for 5 minutes
-      res.json(content);
+      // Set no-cache headers to ensure fresh data
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      res.json(contentWithMonthQuizExams);
     } catch (e) { next(e); }
   });
 

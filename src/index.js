@@ -20,11 +20,39 @@ import { meRouter } from "./routes/me.js";
 import { courseContentRouter } from "./routes/courseContent.js";
 import { visitorsRouter } from "./routes/visitors.js";
 import { dmlRouter } from "./routes/dml.js";
+import { quizExamRouter } from "./routes/quizExam.js";
+import multer from 'multer';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import otpRoutes from "./routes/otp.js";
 
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
 import { getRazorpayStatus } from "./services/razorpay.js";
 import { errorHandler, AppError, ErrorTypes } from "./middleware/errorHandler.js";
+
+// Configure multer for image uploads
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
+
+// Configure S3 client
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'ap-south-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 import purchasesRouter from "./routes/purchases.js";
 
 const app = express();
@@ -246,6 +274,45 @@ async function startServer() {
     // Admin scoped
     app.use("/api/admin", requireAuth, requireAdmin, adminRouter(prisma));
     app.use("/api/admin/dml", requireAuth, requireAdmin, dmlRouter(prisma));
+    
+    // Quiz Exam routes (admin)
+    app.use("/api/admin/quiz-exams", requireAuth, requireAdmin, quizExamRouter(prisma));
+    
+    
+    // Public quiz exam routes for students
+    app.use("/api/quiz-exams", requireAuth, quizExamRouter(prisma));
+
+// Image upload route for CKEditor
+app.post('/api/upload/image', requireAuth, requireAdmin, upload.single('upload'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    const fileExtension = req.file.originalname.split('.').pop();
+    const fileName = `quiz-images/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+
+    const uploadParams = {
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: fileName,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype,
+      ACL: 'public-read'
+    };
+
+    await s3Client.send(new PutObjectCommand(uploadParams));
+
+    // Return CloudFront URL instead of direct S3 URL
+    const cloudFrontUrl = `https://d270a3f3iqnh9i.cloudfront.net/${fileName}`;
+
+    res.json({
+      url: cloudFrontUrl
+    });
+  } catch (error) {
+    console.error('Image upload error:', error);
+    next(error);
+  }
+});
 
     // 404 handler - must be before error handler
     app.use((req, res, next) => {

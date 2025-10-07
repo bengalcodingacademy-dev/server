@@ -173,7 +173,31 @@ export function meRouter(prisma) {
           : user.photoUrl,
         status,
         totalPaidRupees: totalPaid,
-        courses
+        courses,
+        purchases: purchases.map(p => ({
+          ...p,
+          course: {
+            ...p.course,
+            imageUrl: p.course.imageUrl 
+              ? p.course.imageUrl.replace(
+                  'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+                  'https://d270a3f3iqnh9i.cloudfront.net'
+                )
+              : p.course.imageUrl
+          }
+        })),
+        monthlyPurchases: monthlyPurchases.map(p => ({
+          ...p,
+          course: {
+            ...p.course,
+            imageUrl: p.course.imageUrl 
+              ? p.course.imageUrl.replace(
+                  'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+                  'https://d270a3f3iqnh9i.cloudfront.net'
+                )
+              : p.course.imageUrl
+          }
+        }))
       });
     } catch (e) { next(e); }
   });
