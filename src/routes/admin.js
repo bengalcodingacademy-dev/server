@@ -525,19 +525,79 @@ export function adminRouter(prisma) {
   // Users list (read-only)
   router.get('/users', async (req, res, next) => {
     try {
+      const { courseSlug, filter } = req.query;
+      
+      let whereClause = {};
+      
+      // Filter by course if courseSlug is provided
+      if (courseSlug) {
+        whereClause = {
+          OR: [
+            {
+              purchases: {
+                some: {
+                  course: { slug: courseSlug },
+                  status: 'PAID'
+                }
+              }
+            },
+            {
+              monthlyPurchases: {
+                some: {
+                  course: { slug: courseSlug },
+                  status: 'PAID'
+                }
+              }
+            }
+          ]
+        };
+      }
+      
+      // Filter by user type
+      if (filter === 'logged-in') {
+        whereClause = {
+          ...whereClause,
+          emailVerifiedAt: { not: null }
+        };
+      }
+      
       const users = await prisma.user.findMany({ 
+        where: whereClause,
         select: {
           id: true,
           name: true,
           email: true,
+          phone: true,
           role: true,
           age: true,
           dateOfBirth: true,
           createdAt: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
+          photoUrl: true,
+          interestStatus: true,
           purchases: {
             select: {
               status: true,
-              amountRupees: true
+              amountRupees: true,
+              course: {
+                select: {
+                  title: true,
+                  slug: true
+                }
+              }
+            }
+          },
+          monthlyPurchases: {
+            select: {
+              status: true,
+              amountRupees: true,
+              course: {
+                select: {
+                  title: true,
+                  slug: true
+                }
+              }
             }
           }
         },
@@ -553,13 +613,111 @@ export function adminRouter(prisma) {
         age: u.age,
         dateOfBirth: u.dateOfBirth,
         createdAt: u.createdAt,
-        purchasesCount: u.purchases.filter(p=>p.status==='PAID').length,
-        totalPaidRupees: u.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+parseFloat(b.amountRupees),0)
+        emailVerifiedAt: u.emailVerifiedAt,
+        phoneVerifiedAt: u.phoneVerifiedAt,
+        photoUrl: u.photoUrl,
+        interestStatus: u.interestStatus,
+        purchasesCount: (() => {
+          // Count unique courses from regular purchases
+          const regularCourseIds = new Set(u.purchases.filter(p=>p.status==='PAID').map(p => p.course.id));
+          // Count unique courses from monthly purchases
+          const monthlyCourseIds = new Set(u.monthlyPurchases.filter(p=>p.status==='PAID').map(p => p.course.id));
+          // Combine and count unique courses
+          const allCourseIds = new Set([...regularCourseIds, ...monthlyCourseIds]);
+          return allCourseIds.size;
+        })(),
+        totalPaidRupees: u.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+parseFloat(b.amountRupees),0) + u.monthlyPurchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+parseFloat(b.amountRupees),0),
+        courses: (() => {
+          const courseMap = new Map();
+          
+          // Add regular purchases
+          u.purchases.filter(p=>p.status==='PAID').forEach(p => {
+            courseMap.set(p.course.id, { 
+              title: p.course.title, 
+              slug: p.course.slug, 
+              type: 'regular' 
+            });
+          });
+          
+          // Add monthly purchases (will override regular if same course)
+          u.monthlyPurchases.filter(p=>p.status==='PAID').forEach(p => {
+            courseMap.set(p.course.id, { 
+              title: p.course.title, 
+              slug: p.course.slug, 
+              type: 'monthly' 
+            });
+          });
+          
+          return Array.from(courseMap.values());
+        })()
       }));
+      
       
       // Set cache headers
       res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
       res.json(mapped);
+    } catch (e) { next(e); }
+  });
+
+  // User statistics for category cards
+  router.get('/users/stats', async (req, res, next) => {
+    try {
+      // Get all courses
+      const courses = await prisma.course.findMany({
+        where: { isActive: true },
+        select: { id: true, title: true, slug: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Get logged-in users count (users with verified emails)
+      const loggedInUsersCount = await prisma.user.count({
+        where: { emailVerifiedAt: { not: null } }
+      });
+
+      // Get total users count
+      const totalUsersCount = await prisma.user.count();
+      
+
+      // Get course-specific user counts
+      const courseStats = await Promise.all(
+        courses.map(async (course) => {
+          const courseUsersCount = await prisma.user.count({
+            where: {
+              OR: [
+                {
+                  purchases: {
+                    some: {
+                      courseId: course.id,
+                      status: 'PAID'
+                    }
+                  }
+                },
+                {
+                  monthlyPurchases: {
+                    some: {
+                      courseId: course.id,
+                      status: 'PAID'
+                    }
+                  }
+                }
+              ]
+            }
+          });
+
+          return {
+            id: course.id,
+            title: course.title,
+            slug: course.slug,
+            userCount: courseUsersCount
+          };
+        })
+      );
+
+      res.json({
+        totalUsers: totalUsersCount,
+        loggedInUsers: loggedInUsersCount,
+        courses: courseStats
+      });
     } catch (e) { next(e); }
   });
 

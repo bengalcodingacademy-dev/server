@@ -29,6 +29,8 @@ model User {
   monthlyPurchases MonthlyPurchase[]
   notifications    NotificationReceipt[]
   purchases        Purchase[]
+  quizExamAttempts QuizExamAttempt[]
+  quizExamAnalytics QuizExamAnalytics[]
 
   @@index([role])
   @@index([createdAt])
@@ -72,6 +74,7 @@ model Course {
   purchases        Purchase[]
   testimonials     Testimonial[]
   content          CourseContent[]
+  quizExams        QuizExam[]
 
   @@index([isActive])
   @@index([slug])
@@ -226,6 +229,7 @@ model CourseContent {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quizExams   QuizExam[]
 
   @@index([courseId])
   @@index([courseId, monthNumber])
@@ -279,4 +283,102 @@ model UniqueVisitor {
   @@unique([ipAddress, date])
   @@index([date])
   @@index([ipAddress])
+}
+
+
+// New Quiz Tracking System Models
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model QuizExam {
+  id               String   @id @default(uuid())
+  courseId         String
+  monthNumber      Int
+  lessonId         String?
+  title            String
+  totalMarks       Int      @default(0)
+  durationMinutes  Int      @default(30)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  
+  // Relations
+  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson           CourseContent? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  questions        QuizExamQuestion[]
+  attempts         QuizExamAttempt[]
+  analytics        QuizExamAnalytics?
+  
+  @@index([courseId])
+  @@index([monthNumber])
+  @@index([lessonId])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([courseId, monthNumber])
+}
+
+model QuizExamQuestion {
+  id             String         @id @default(uuid())
+  quizId         String
+  questionText   String
+  options        Json           // JSONB array of answer choices
+  correctAnswer  String
+  marks          Int            @default(1)
+  difficulty     DifficultyLevel @default(MEDIUM)
+  createdAt      DateTime       @default(now())
+  
+  // Relations
+  quiz           QuizExam       @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  @@index([quizId])
+  @@index([difficulty])
+  @@index([createdAt])
+}
+
+model QuizExamAttempt {
+  id           String    @id @default(uuid())
+  quizId       String
+  userId       String
+  score        Int       @default(0)
+  totalMarks   Int       @default(0)
+  percentage   Float     @default(0.0)
+  startedAt    DateTime  @default(now())
+  submittedAt  DateTime?
+  rank         Int?
+  details      Json      @default("{}") // JSONB object storing user answers
+  
+  // Relations
+  quiz         QuizExam  @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([quizId])
+  @@index([userId])
+  @@index([score])
+  @@index([percentage])
+  @@index([rank])
+  @@index([submittedAt])
+  @@index([quizId, userId])
+  @@index([quizId, score])
+}
+
+model QuizExamAnalytics {
+  id            String   @id @default(uuid())
+  quizId        String   @unique
+  averageScore  Float    @default(0.0)
+  highestScore  Float    @default(0.0)
+  lowestScore   Float    @default(0.0)
+  totalAttempts Int      @default(0)
+  topperId      String?
+  createdAt     DateTime @default(now())
+  
+  // Relations
+  quiz          QuizExam @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  topper        User?    @relation(fields: [topperId], references: [id], onDelete: SetNull)
+  
+  @@index([quizId])
+  @@index([topperId])
+  @@index([createdAt])
 }
