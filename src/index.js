@@ -21,6 +21,7 @@ import { courseContentRouter } from "./routes/courseContent.js";
 import { visitorsRouter } from "./routes/visitors.js";
 import { dmlRouter } from "./routes/dml.js";
 import { quizExamRouter } from "./routes/quizExam.js";
+import { purchaseNotificationsRouter } from "./routes/purchaseNotifications.js";
 import multer from 'multer';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import otpRoutes from "./routes/otp.js";
@@ -274,6 +275,7 @@ async function startServer() {
     // Admin scoped
     app.use("/api/admin", requireAuth, requireAdmin, adminRouter(prisma));
     app.use("/api/admin/dml", requireAuth, requireAdmin, dmlRouter(prisma));
+    app.use("/api/admin/purchase-notifications", requireAuth, requireAdmin, purchaseNotificationsRouter(prisma));
     
     // Quiz Exam routes (admin)
     app.use("/api/admin/quiz-exams", requireAuth, requireAdmin, quizExamRouter(prisma));

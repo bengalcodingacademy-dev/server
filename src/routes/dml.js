@@ -1,5 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
+import { createPurchaseNotification } from './purchaseNotifications.js';
 
 export function dmlRouter(prisma) {
   const router = express.Router();
@@ -88,6 +89,18 @@ export function dmlRouter(prisma) {
 
         console.log(`DML: Full course access granted to ${userEmail} for course ${courseId} by admin ${req.user.email}`);
 
+        // Create notification for manual access grant
+        await createPurchaseNotification(prisma, {
+          type: 'MANUAL_ACCESS',
+          title: 'Manual Course Access Granted',
+          message: `Admin granted full access to "${course.title}" for user`,
+          amount: parseFloat(purchase.amountRupees),
+          userId: user.id,
+          courseId: courseId,
+          purchaseId: purchase.id,
+          userEmail: userEmail
+        });
+
       } else if (accessType === 'monthly') {
         // Validate month number for monthly access
         if (!monthNumber) {
@@ -136,6 +149,18 @@ export function dmlRouter(prisma) {
         };
 
         console.log(`DML: Monthly access granted to ${userEmail} for course ${courseId}, month ${monthNumber} by admin ${req.user.email}`);
+
+        // Create notification for manual monthly access grant
+        await createPurchaseNotification(prisma, {
+          type: 'MANUAL_ACCESS',
+          title: 'Manual Monthly Access Granted',
+          message: `Admin granted month ${monthNumber} access to "${course.title}" for user`,
+          amount: parseFloat(monthlyPurchase.amountRupees),
+          userId: user.id,
+          courseId: courseId,
+          purchaseId: null, // No purchase record for manual access
+          userEmail: userEmail
+        });
       }
 
       res.json({
