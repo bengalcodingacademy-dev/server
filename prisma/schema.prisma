@@ -31,6 +31,7 @@ model User {
   purchases        Purchase[]
   quizExamAttempts QuizExamAttempt[]
   quizExamAnalytics QuizExamAnalytics[]
+  purchaseNotifications PurchaseNotification[]
 
   @@index([role])
   @@index([createdAt])
@@ -75,6 +76,7 @@ model Course {
   testimonials     Testimonial[]
   content          CourseContent[]
   quizExams        QuizExam[]
+  purchaseNotifications PurchaseNotification[]
 
   @@index([isActive])
   @@index([slug])
@@ -381,4 +383,29 @@ model QuizExamAnalytics {
   @@index([quizId])
   @@index([topperId])
   @@index([createdAt])
+}
+
+model PurchaseNotification {
+  id          String   @id @default(uuid())
+  type        String   // 'PURCHASE', 'MONTHLY_PAYMENT', 'MANUAL_ACCESS'
+  title       String
+  message     String
+  amount      Float?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  userId      String
+  courseId    String
+  purchaseId  String?
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([courseId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([purchaseId])
 }

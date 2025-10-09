@@ -1,6 +1,7 @@
 import express from "express";
 import { createOrder, verifyPayment } from "../services/razorpay.js";
 import { v4 as uuidv4 } from "uuid";
+import { createPurchaseNotification } from "./purchaseNotifications.js";
 
 export default function purchasesRouter(prisma) {
   const router = express.Router();
@@ -125,6 +126,22 @@ router.post("/verify-payment", async (req, res) => {
     await prisma.user.update({
       where: { id: userId },
       data: { interestStatus: 'PURCHASED' }
+    });
+
+    // Create purchase notification for admin
+    await createPurchaseNotification(prisma, {
+      type: isMonthlyPayment ? 'MONTHLY_PAYMENT' : 'PURCHASE',
+      title: isMonthlyPayment 
+        ? `Monthly Payment Received - Month ${monthNumber}` 
+        : 'New Course Purchase',
+      message: isMonthlyPayment
+        ? `User paid ₹${amountRupees} for month ${monthNumber} of "${course.title}"`
+        : `User purchased "${course.title}" for ₹${amountRupees}`,
+      amount: amountRupees,
+      userId: userId,
+      courseId: courseId,
+      purchaseId: purchase.id,
+      userEmail: req.user.email
     });
 
     // If it's a monthly payment, also create a MonthlyPurchase record
