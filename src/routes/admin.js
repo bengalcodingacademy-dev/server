@@ -73,14 +73,14 @@ export function adminRouter(prisma) {
         take: 100 // Limit results
       });
       
-      // Replace S3 URLs with CloudFront URLs and add cache busting
+      // Replace S3 URLs with CloudFront URLs (if any still exist)
       const coursesWithCloudFront = courses.map(course => ({
         ...course,
         imageUrl: course.imageUrl 
           ? course.imageUrl.replace(
               'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
               'https://d270a3f3iqnh9i.cloudfront.net'
-            ) + `?v=${Date.now()}` // Add cache busting parameter
+            )
           : course.imageUrl
       }));
       
@@ -133,14 +133,14 @@ export function adminRouter(prisma) {
         return res.status(404).json({ error: 'Course not found' });
       }
       
-      // Replace S3 URLs with CloudFront URLs and add cache busting
+      // Replace S3 URLs with CloudFront URLs (if any still exist)
       const courseWithCloudFront = {
         ...course,
         imageUrl: course.imageUrl 
           ? course.imageUrl.replace(
               'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
               'https://d270a3f3iqnh9i.cloudfront.net'
-            ) + `?v=${Date.now()}` // Add cache busting parameter
+            )
           : course.imageUrl
       };
       
@@ -775,7 +775,7 @@ router.post('/uploads/presign', async (req, res, next) => {
       Expires: 60
     });
 
-    const publicUrl = `https://${bucket}.s3.${process.env.S3_REGION}.amazonaws.com/${body.key}`;
+    const publicUrl = `https://d270a3f3iqnh9i.cloudfront.net/${body.key}`;
     
     console.log('Generated presigned POST:', post);
     console.log('Public URL:', publicUrl);
