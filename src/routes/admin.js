@@ -73,9 +73,20 @@ export function adminRouter(prisma) {
         take: 100 // Limit results
       });
       
-      // Set cache headers
-      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
-      res.json(courses);
+      // Replace S3 URLs with CloudFront URLs and add cache busting
+      const coursesWithCloudFront = courses.map(course => ({
+        ...course,
+        imageUrl: course.imageUrl 
+          ? course.imageUrl.replace(
+              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+              'https://d270a3f3iqnh9i.cloudfront.net'
+            ) + `?v=${Date.now()}` // Add cache busting parameter
+          : course.imageUrl
+      }));
+      
+      // Set cache headers - reduced cache time for image updates
+      res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
+      res.json(coursesWithCloudFront);
     } catch (e) { next(e); }
   });
 
@@ -121,7 +132,19 @@ export function adminRouter(prisma) {
       if (!course) {
         return res.status(404).json({ error: 'Course not found' });
       }
-      res.json(course);
+      
+      // Replace S3 URLs with CloudFront URLs and add cache busting
+      const courseWithCloudFront = {
+        ...course,
+        imageUrl: course.imageUrl 
+          ? course.imageUrl.replace(
+              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+              'https://d270a3f3iqnh9i.cloudfront.net'
+            ) + `?v=${Date.now()}` // Add cache busting parameter
+          : course.imageUrl
+      };
+      
+      res.json(courseWithCloudFront);
     } catch (e) { next(e); }
   });
 
