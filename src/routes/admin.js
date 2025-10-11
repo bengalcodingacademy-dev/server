@@ -73,9 +73,20 @@ export function adminRouter(prisma) {
         take: 100 // Limit results
       });
       
-      // Set cache headers
-      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
-      res.json(courses);
+      // Replace S3 URLs with CloudFront URLs (if any still exist)
+      const coursesWithCloudFront = courses.map(course => ({
+        ...course,
+        imageUrl: course.imageUrl 
+          ? course.imageUrl.replace(
+              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+              'https://d270a3f3iqnh9i.cloudfront.net'
+            )
+          : course.imageUrl
+      }));
+      
+      // Set cache headers - reduced cache time for image updates
+      res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
+      res.json(coursesWithCloudFront);
     } catch (e) { next(e); }
   });
 
@@ -121,7 +132,19 @@ export function adminRouter(prisma) {
       if (!course) {
         return res.status(404).json({ error: 'Course not found' });
       }
-      res.json(course);
+      
+      // Replace S3 URLs with CloudFront URLs (if any still exist)
+      const courseWithCloudFront = {
+        ...course,
+        imageUrl: course.imageUrl 
+          ? course.imageUrl.replace(
+              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
+              'https://d270a3f3iqnh9i.cloudfront.net'
+            )
+          : course.imageUrl
+      };
+      
+      res.json(courseWithCloudFront);
     } catch (e) { next(e); }
   });
 
@@ -752,7 +775,7 @@ router.post('/uploads/presign', async (req, res, next) => {
       Expires: 60
     });
 
-    const publicUrl = `https://${bucket}.s3.${process.env.S3_REGION}.amazonaws.com/${body.key}`;
+    const publicUrl = `https://d270a3f3iqnh9i.cloudfront.net/${body.key}`;
     
     console.log('Generated presigned POST:', post);
     console.log('Public URL:', publicUrl);
