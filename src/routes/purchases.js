@@ -1,4 +1,5 @@
 import express from "express";
+import { z } from "zod";
 import { createOrder, verifyPayment } from "../services/razorpay.js";
 import { v4 as uuidv4 } from "uuid";
 import { createPurchaseNotification } from "./purchaseNotifications.js";
@@ -62,7 +63,18 @@ export default function purchasesRouter(prisma) {
 // Verify payment
 router.post("/verify-payment", async (req, res) => {
   try {
-    const { razorpayOrderId, razorpayPaymentId, razorpaySignature, courseId, isMonthlyPayment, monthNumber, totalMonths } = req.body;
+    // Validate body to avoid Prisma receiving undefined/invalid values
+    const bodySchema = z.object({
+      razorpayOrderId: z.string().min(1),
+      razorpayPaymentId: z.string().min(1),
+      razorpaySignature: z.string().min(1),
+      courseId: z.string().min(1),
+      isMonthlyPayment: z.boolean().optional(),
+      monthNumber: z.number().int().positive().optional(),
+      totalMonths: z.number().int().positive().optional()
+    });
+
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature, courseId, isMonthlyPayment, monthNumber, totalMonths } = bodySchema.parse(req.body);
 
     const isValid = verifyPayment(
       razorpayOrderId,
@@ -157,17 +169,19 @@ router.post("/verify-payment", async (req, res) => {
           amountRupees: String(amountRupees),
           status: "PAID",
           dueDate,
-          razorpayOrderId,
-          razorpayPaymentId,
-          razorpaySignature
+          paidAt: new Date()
         }
       });
     }
 
     res.json({ success: true, purchase });
   } catch (error) {
+    // Send safe error to client; log detailed error on server
     console.error("Error verifying payment:", error);
-    res.status(500).json({ success: false, error: error.message });
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ success: false, error: 'Invalid payment payload' });
+    }
+    return res.status(500).json({ success: false, error: 'Internal server error during payment verification' });
   }
 });
 
