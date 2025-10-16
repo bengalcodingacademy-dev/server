@@ -164,7 +164,7 @@ export async function createPurchaseNotification(prisma, data) {
       }
     });
 
-    console.log(`📢 Purchase notification created: ${data.title} for ${data.userEmail}`);
+    console.log(`📢 Purchase notification created: ${data.title}${data.userEmail ? ` for ${data.userEmail}` : ''}`);
     return notification;
   } catch (error) {
     console.error('Error creating purchase notification:', error);
