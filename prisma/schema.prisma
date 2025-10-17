@@ -175,6 +175,10 @@ model Coupon {
   code            String   @unique
   discountPercent Int
   courseId        String
+  // Maximum times this coupon can be used (null/omitted = unlimited)
+  maxLimit        Int?
+  // How many times this coupon has been used
+  usedLimit       Int      @default(0)
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   course          Course   @relation(fields: [courseId], references: [id])
