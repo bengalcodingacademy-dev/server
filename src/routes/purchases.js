@@ -174,6 +174,19 @@ router.post("/verify-payment", async (req, res) => {
       });
     }
 
+    // If a coupon was used (passed via order notes), increment usage
+    try {
+      const couponCode = req.body.couponCode || null;
+      if (couponCode) {
+        await prisma.coupon.updateMany({
+          where: { code: couponCode.toUpperCase(), courseId: course.id },
+          data: { usedLimit: { increment: 1 } }
+        });
+      }
+    } catch (e) {
+      console.warn('Coupon usage increment failed:', e.message);
+    }
+
     res.json({ success: true, purchase });
   } catch (error) {
     // Send safe error to client; log detailed error on server
@@ -186,9 +199,9 @@ router.post("/verify-payment", async (req, res) => {
 });
 
 // Create order
-router.post("/create-order", async (req, res) => {
+  router.post("/create-order", async (req, res) => {
   try {
-    const { courseId, isMonthlyPayment, monthNumber, totalMonths } = req.body;
+      const { courseId, isMonthlyPayment, monthNumber, totalMonths, couponCode } = req.body;
 
     // Fetch course details from database
     const course = await prisma.course.findUnique({
@@ -206,7 +219,7 @@ router.post("/create-order", async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    // Calculate amount based on course pricing
+      // Calculate amount based on course pricing
     let amountRupees;
     if (isMonthlyPayment && course.isMonthlyPayment) {
       amountRupees = parseFloat(course.monthlyFeeRupees) || 0;
@@ -228,9 +241,33 @@ router.post("/create-order", async (req, res) => {
       });
     }
 
-    if (amountRupees <= 0) {
+      if (amountRupees <= 0) {
       return res.status(400).json({ error: 'Invalid course pricing' });
     }
+
+      // Apply coupon if provided
+      let appliedCoupon = null;
+      if (couponCode) {
+        const coupon = await prisma.coupon.findFirst({
+          where: {
+            code: couponCode.toUpperCase(),
+            courseId: courseId,
+            isActive: true
+          }
+        });
+
+        if (!coupon) {
+          return res.status(400).json({ error: 'Invalid coupon' });
+        }
+
+        if (coupon.maxLimit && coupon.usedLimit >= coupon.maxLimit) {
+          return res.status(400).json({ error: 'Coupon usage limit reached' });
+        }
+
+        const discount = Math.round((amountRupees * coupon.discountPercent) / 100);
+        amountRupees = Math.max(0, amountRupees - discount);
+        appliedCoupon = { id: coupon.id, code: coupon.code, discountPercent: coupon.discountPercent };
+      }
 
     const amountPaise = Math.round(amountRupees * 100);
     
@@ -241,10 +278,10 @@ router.post("/create-order", async (req, res) => {
       monthNumber
     });
 
-    const receipt = `p_${uuidv4().slice(0, 8)}`;
+      const receipt = `p_${uuidv4().slice(0, 8)}`;
 
     // Create Razorpay order
-    const order = await createOrder({
+      const order = await createOrder({
       amount: amountPaise,
       currency: "INR",
       receipt,
@@ -252,12 +289,13 @@ router.post("/create-order", async (req, res) => {
         courseId,
         isMonthlyPayment,
         monthNumber,
-        totalMonths,
+          totalMonths,
+          couponCode: appliedCoupon?.code || null
       },
     });
 
     // Mock purchase entry
-    const purchase = {
+      const purchase = {
       id: uuidv4(),
       courseId,
       isMonthlyPayment,
@@ -265,6 +303,7 @@ router.post("/create-order", async (req, res) => {
       totalMonths,
       amountRupees: String(amountRupees),
       status: "pending",
+        couponCode: appliedCoupon?.code || null
     };
 
     res.json({ order, purchase });
