@@ -23,33 +23,37 @@ import { dmlRouter } from "./routes/dml.js";
 import { quizExamRouter } from "./routes/quizExam.js";
 import { purchaseNotificationsRouter } from "./routes/purchaseNotifications.js";
 import { couponsRouter } from "./routes/coupons.js";
-import multer from 'multer';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import multer from "multer";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import otpRoutes from "./routes/otp.js";
 
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
 import { getRazorpayStatus } from "./services/razorpay.js";
-import { errorHandler, AppError, ErrorTypes } from "./middleware/errorHandler.js";
+import {
+  errorHandler,
+  AppError,
+  ErrorTypes,
+} from "./middleware/errorHandler.js";
 
 // Configure multer for image uploads
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    if (file.mimetype.startsWith("image/")) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'), false);
+      cb(new Error("Only image files are allowed"), false);
     }
-  }
+  },
 });
 
 // Configure S3 client
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'ap-south-1',
+  region: process.env.AWS_REGION || "ap-south-1",
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -61,7 +65,7 @@ const app = express();
 
 // Trust proxy for production (behind load balancer/reverse proxy)
 // Only trust the first proxy (load balancer)
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 //Push to DO
 const prisma = new PrismaClient({
@@ -107,17 +111,19 @@ async function startServer() {
         allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
       })
     );
-    app.use(rateLimit({
-      windowMs: 60 * 1000,
-      max: 120,
-      standardHeaders: true,
-      legacyHeaders: false,
-      trustProxy: true,
-      skip: (req) => {
-        // Skip rate limiting for health checks
-        return req.path === '/api/health' || req.path === '/';
-      }
-    }));
+    app.use(
+      rateLimit({
+        windowMs: 60 * 1000,
+        max: 120,
+        standardHeaders: true,
+        legacyHeaders: false,
+        trustProxy: true,
+        skip: (req) => {
+          // Skip rate limiting for health checks
+          return req.path === "/api/health" || req.path === "/";
+        },
+      })
+    );
 
     // Simple root endpoint for basic connectivity test
     app.get("/", (req, res) => {
@@ -144,18 +150,20 @@ async function startServer() {
           env: process.env.NODE_ENV || "development",
           prismaStatus: "INITIALIZED",
           razorpay: {
-            configured: !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+            configured: !!(
+              process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+            ),
             hasKeyId: !!process.env.RAZORPAY_KEY_ID,
             hasKeySecret: !!process.env.RAZORPAY_KEY_SECRET,
-            instance: true
-          }
+            instance: true,
+          },
         });
       } catch (error) {
         res.status(500).json({
           ok: false,
           time: new Date().toISOString(),
           error: error.message,
-          database: "disconnected"
+          database: "disconnected",
         });
       }
     });
@@ -276,51 +284,77 @@ async function startServer() {
     // Admin scoped
     app.use("/api/admin", requireAuth, requireAdmin, adminRouter(prisma));
     app.use("/api/admin/dml", requireAuth, requireAdmin, dmlRouter(prisma));
-    app.use("/api/admin/purchase-notifications", requireAuth, requireAdmin, purchaseNotificationsRouter(prisma));
-    app.use("/api/admin/coupons", requireAuth, requireAdmin, couponsRouter(prisma));
-    
+    app.use(
+      "/api/admin/purchase-notifications",
+      requireAuth,
+      requireAdmin,
+      purchaseNotificationsRouter(prisma)
+    );
+    app.use(
+      "/api/admin/coupons",
+      requireAuth,
+      requireAdmin,
+      couponsRouter(prisma)
+    );
+
     // Quiz Exam routes (admin)
-    app.use("/api/admin/quiz-exams", requireAuth, requireAdmin, quizExamRouter(prisma));
-    
-    
+    app.use(
+      "/api/admin/quiz-exams",
+      requireAuth,
+      requireAdmin,
+      quizExamRouter(prisma)
+    );
+
     // Public quiz exam routes for students
     app.use("/api/quiz-exams", requireAuth, quizExamRouter(prisma));
 
-// Image upload route for CKEditor
-app.post('/api/upload/image', requireAuth, requireAdmin, upload.single('upload'), async (req, res, next) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided' });
-    }
+    // Image upload route for CKEditor
+    app.post(
+      "/api/upload/image",
+      requireAuth,
+      requireAdmin,
+      upload.single("upload"),
+      async (req, res, next) => {
+        try {
+          if (!req.file) {
+            return res.status(400).json({ error: "No image file provided" });
+          }
 
-    const fileExtension = req.file.originalname.split('.').pop();
-    const fileName = `quiz-images/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+          const fileExtension = req.file.originalname.split(".").pop();
+          const fileName = `quiz-images/${Date.now()}-${Math.random()
+            .toString(36)
+            .substring(7)}.${fileExtension}`;
 
-    const uploadParams = {
-      Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: fileName,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-      ACL: 'public-read'
-    };
+          const uploadParams = {
+            Bucket: process.env.AWS_S3_BUCKET_NAME,
+            Key: fileName,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+            ACL: "public-read",
+          };
 
-    await s3Client.send(new PutObjectCommand(uploadParams));
+          await s3Client.send(new PutObjectCommand(uploadParams));
 
-    // Return CloudFront URL instead of direct S3 URL
-    const cloudFrontUrl = `https://d270a3f3iqnh9i.cloudfront.net/${fileName}`;
+          // Return CloudFront URL instead of direct S3 URL
+          const cloudFrontUrl = `https://d270a3f3iqnh9i.cloudfront.net/${fileName}`;
 
-    res.json({
-      url: cloudFrontUrl
-    });
-  } catch (error) {
-    console.error('Image upload error:', error);
-    next(error);
-  }
-});
+          res.json({
+            url: cloudFrontUrl,
+          });
+        } catch (error) {
+          console.error("Image upload error:", error);
+          next(error);
+        }
+      }
+    );
 
     // 404 handler - must be before error handler
     app.use((req, res, next) => {
-      const error = new AppError(`Not found - ${req.originalUrl}`, 404, ErrorTypes.NOT_FOUND);
+      const error = new AppError(
+        `Not found - ${req.originalUrl}`,
+        404,
+        ErrorTypes.NOT_FOUND
+      );
       next(error);
     });
 
