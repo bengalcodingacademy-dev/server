@@ -127,6 +127,7 @@ async function startServer() {
 
     // Simple root endpoint for basic connectivity test
     app.get("/", (req, res) => {
+      console.log("testing");
       res.json({
         message: "Bengal Coding Academy API Server",
         status: "running",
