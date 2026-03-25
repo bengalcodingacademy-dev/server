@@ -1,0 +1,3 @@
+ALTER TABLE "User"
+ADD COLUMN "is_STCET_Training_Student" BOOLEAN,
+ADD COLUMN "STCET_Training_Batch" INTEGER;
