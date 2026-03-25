@@ -16,6 +16,8 @@ model User {
   role             Role                  @default(STUDENT)
   createdAt        DateTime              @default(now())
   age              Int?
+  isSTCETTrainingStudent Boolean?        @map("is_STCET_Training_Student")
+  stcetTrainingBatch Int?                @map("STCET_Training_Batch")
   resetToken       String?
   resetTokenExp    DateTime?
   dateOfBirth      DateTime?
@@ -32,6 +34,7 @@ model User {
   quizExamAttempts QuizExamAttempt[]
   quizExamAnalytics QuizExamAnalytics[]
   purchaseNotifications PurchaseNotification[]
+  stcetTestAttempts StcetTestAttempt[]
 
   @@index([role])
   @@index([createdAt])
@@ -300,6 +303,28 @@ enum DifficultyLevel {
   HARD
 }
 
+enum StcetTestStatus {
+  ACTIVE
+  CLOSED
+  INACTIVE
+}
+
+enum StcetQuestionType {
+  MCQ
+  CODING
+}
+
+enum StcetAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
+enum StcetReviewStatus {
+  NOT_REQUIRED
+  PENDING_REVIEW
+  REVIEWED
+}
+
 model QuizExam {
   id               String   @id @default(uuid())
   courseId         String
@@ -412,4 +437,106 @@ model PurchaseNotification {
   @@index([isRead])
   @@index([createdAt])
   @@index([purchaseId])
+}
+
+model StcetTest {
+  id              String           @id @default(uuid())
+  title           String
+  description     String?
+  instructions    String?
+  status          StcetTestStatus  @default(INACTIVE)
+  durationMinutes Int
+  totalMarks      Int              @default(0)
+  startsAt        DateTime
+  endsAt          DateTime
+  resultsPublishedAt DateTime?
+  resultsPublishedById String?
+  createdById     String
+  updatedById     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  questions       StcetTestQuestion[]
+  attempts        StcetTestAttempt[]
+
+  @@index([status])
+  @@index([startsAt])
+  @@index([endsAt])
+  @@index([resultsPublishedAt])
+  @@index([createdAt])
+}
+
+model StcetTestQuestion {
+  id              String            @id @default(uuid())
+  testId          String
+  type            StcetQuestionType
+  prompt          String
+  description     String?
+  marks           Int
+  sortOrder       Int               @default(0)
+  options         Json?
+  correctOption   String?
+  codingLanguage  String?
+  referenceScreenshotUrls Json?
+  maxScreenshots  Int               @default(3)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  test            StcetTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers         StcetTestAnswer[]
+
+  @@index([testId])
+  @@index([type])
+  @@index([sortOrder])
+}
+
+model StcetTestAttempt {
+  id              String            @id @default(uuid())
+  testId          String
+  userId          String
+  status          StcetAttemptStatus @default(IN_PROGRESS)
+  reviewStatus    StcetReviewStatus  @default(NOT_REQUIRED)
+  autoScore       Int               @default(0)
+  manualScore     Int               @default(0)
+  totalScore      Int               @default(0)
+  totalMarks      Int               @default(0)
+  percentage      Float             @default(0.0)
+  generalFeedback String?
+  startedAt       DateTime          @default(now())
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  timeTakenSeconds Int?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  test            StcetTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers         StcetTestAnswer[]
+
+  @@unique([testId, userId])
+  @@index([testId])
+  @@index([userId])
+  @@index([status])
+  @@index([reviewStatus])
+  @@index([submittedAt])
+}
+
+model StcetTestAnswer {
+  id                 String           @id @default(uuid())
+  attemptId          String
+  questionId         String
+  selectedOption     String?
+  codeAnswer         String?
+  submittedLanguage  String?
+  screenshotUrls     Json             @default("[]")
+  isCorrect          Boolean?
+  autoAwardedMarks   Int              @default(0)
+  manualAwardedMarks Int?
+  finalAwardedMarks  Int              @default(0)
+  reviewerNotes      String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  attempt            StcetTestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question           StcetTestQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
 }

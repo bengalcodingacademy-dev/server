@@ -23,6 +23,7 @@ import { dmlRouter } from "./routes/dml.js";
 import { quizExamRouter } from "./routes/quizExam.js";
 import { purchaseNotificationsRouter } from "./routes/purchaseNotifications.js";
 import { couponsRouter } from "./routes/coupons.js";
+import { stcetRouter } from "./routes/stcet.js";
 import multer from "multer";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import otpRoutes from "./routes/otp.js";
@@ -102,12 +103,14 @@ async function startServer() {
           "http://localhost:5173",
           "http://localhost:5174",
           "http://localhost:5175",
+          "http://localhost:5176",
           "https://admin.bengalcodingacademy.com",
           "https://bengalcodingacademy.com",
           "https://www.bengalcodingacademy.com",
+          "https://stcet.bengalcodingacademy.com",
         ],
         credentials: true,
-        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
       })
     );
@@ -308,6 +311,9 @@ async function startServer() {
 
     // Public quiz exam routes for students
     app.use("/api/quiz-exams", requireAuth, quizExamRouter(prisma));
+
+    // STCET test module routes
+    app.use("/api/stcet", stcetRouter(prisma));
 
     // Image upload route for CKEditor
     app.post(
