@@ -64,6 +64,47 @@ import purchasesRouter from "./routes/purchases.js";
 
 const app = express();
 
+const allowedOrigins = new Set([
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+  "http://localhost:5176",
+  "https://admin.bengalcodingacademy.com",
+  "https://bengalcodingacademy.com",
+  "https://www.bengalcodingacademy.com",
+  "https://stcet.bengalcodingacademy.com",
+]);
+
+if (process.env.CORS_ORIGINS) {
+  process.env.CORS_ORIGINS.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .forEach((origin) => allowedOrigins.add(origin));
+}
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow server-to-server requests and tools like curl/postman without Origin.
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (
+      allowedOrigins.has(origin) ||
+      /^https:\/\/([a-z0-9-]+\.)?bengalcodingacademy\.com$/i.test(origin)
+    ) {
+      return callback(null, true);
+    }
+
+    console.warn(`Blocked CORS origin: ${origin}`);
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  optionsSuccessStatus: 204,
+};
+
 // Trust proxy for production (behind load balancer/reverse proxy)
 // Only trust the first proxy (load balancer)
 app.set("trust proxy", 1);
@@ -97,23 +138,8 @@ async function startServer() {
     app.use(express.json({ limit: "1mb" }));
     app.use(morgan("dev"));
     app.use(cookieParser());
-    app.use(
-      cors({
-        origin: [
-          "http://localhost:5173",
-          "http://localhost:5174",
-          "http://localhost:5175",
-          "http://localhost:5176",
-          "https://admin.bengalcodingacademy.com",
-          "https://bengalcodingacademy.com",
-          "https://www.bengalcodingacademy.com",
-          "https://stcet.bengalcodingacademy.com",
-        ],
-        credentials: true,
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-      })
-    );
+    app.use(cors(corsOptions));
+    app.options("*", cors(corsOptions));
     app.use(
       rateLimit({
         windowMs: 60 * 1000,
