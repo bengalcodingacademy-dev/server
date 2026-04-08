@@ -139,7 +139,7 @@ async function startServer() {
     app.use(morgan("dev"));
     app.use(cookieParser());
     app.use(cors(corsOptions));
-    app.options("*", cors(corsOptions));
+    app.options(/.*/, cors(corsOptions));
     app.use(
       rateLimit({
         windowMs: 60 * 1000,
