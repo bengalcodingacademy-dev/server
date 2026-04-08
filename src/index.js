@@ -96,7 +96,7 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    console.warn(`Blocked CORS origin: ${origin}`);
+    console.warn(`Sauvik --- Blocked CORS origin: ${origin}`);
     return callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
   credentials: true,
@@ -151,7 +151,7 @@ async function startServer() {
           // Skip rate limiting for health checks
           return req.path === "/api/health" || req.path === "/";
         },
-      })
+      }),
     );
 
     // Simple root endpoint for basic connectivity test
@@ -318,13 +318,13 @@ async function startServer() {
       "/api/admin/purchase-notifications",
       requireAuth,
       requireAdmin,
-      purchaseNotificationsRouter(prisma)
+      purchaseNotificationsRouter(prisma),
     );
     app.use(
       "/api/admin/coupons",
       requireAuth,
       requireAdmin,
-      couponsRouter(prisma)
+      couponsRouter(prisma),
     );
 
     // Quiz Exam routes (admin)
@@ -332,7 +332,7 @@ async function startServer() {
       "/api/admin/quiz-exams",
       requireAuth,
       requireAdmin,
-      quizExamRouter(prisma)
+      quizExamRouter(prisma),
     );
 
     // Public quiz exam routes for students
@@ -378,7 +378,7 @@ async function startServer() {
           console.error("Image upload error:", error);
           next(error);
         }
-      }
+      },
     );
 
     // 404 handler - must be before error handler
@@ -386,7 +386,7 @@ async function startServer() {
       const error = new AppError(
         `Not found - ${req.originalUrl}`,
         404,
-        ErrorTypes.NOT_FOUND
+        ErrorTypes.NOT_FOUND,
       );
       next(error);
     });
@@ -399,7 +399,7 @@ async function startServer() {
       console.log(`🚀 Server running on port ${port}`);
       console.log(`🌐 Server accessible at http://localhost:${port}`);
       console.log(
-        `📊 Health check available at http://localhost:${port}/api/health`
+        `📊 Health check available at http://localhost:${port}/api/health`,
       );
     });
 
