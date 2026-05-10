@@ -1,9 +1,10 @@
-import express from 'express';
-import { z } from 'zod';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import express from "express";
+import { z } from "zod";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
+//
 const upsertCourseSchema = z.object({
   title: z.string().min(2),
   slug: z.string().min(2),
@@ -19,7 +20,7 @@ const upsertCourseSchema = z.object({
   numberOfModules: z.number().int().nonnegative().optional(),
   modulesJson: z.any().optional(),
   numberOfLectures: z.number().int().nonnegative().optional(),
-  language: z.enum(['english', 'hindi', 'bengali']).default('bengali'),
+  language: z.enum(["english", "hindi", "bengali"]).default("bengali"),
   starRating: z.number().min(0).max(5).optional(),
   numberOfStudents: z.number().int().nonnegative().optional(),
   aboutCourse: z.string().optional(),
@@ -32,7 +33,7 @@ const upsertCourseSchema = z.object({
   programmingLanguage: z.string().optional(),
   classSchedule: z.string().optional(),
   classTimings: z.string().optional(),
-  isActive: z.boolean().optional()
+  isActive: z.boolean().optional(),
 });
 
 const webinarSchema = z.object({
@@ -41,221 +42,246 @@ const webinarSchema = z.object({
   presenter: z.string().optional(),
   startTime: z.string().optional(),
   joinLink: z.string().optional(),
-  imageUrl: z.string().url().optional()
+  imageUrl: z.string().url().optional(),
 });
 
 const announcementSchema = z.object({
   title: z.string().min(2),
   body: z.string().min(2),
-  courseId: z.string().optional()
+  courseId: z.string().optional(),
 });
 
 export function adminRouter(prisma) {
   const router = express.Router();
   const s3 = new S3Client({
     region: process.env.S3_REGION,
-    credentials: process.env.S3_ACCESS_KEY_ID ? {
-      accessKeyId: process.env.S3_ACCESS_KEY_ID,
-      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-    } : undefined,
+    credentials: process.env.S3_ACCESS_KEY_ID
+      ? {
+          accessKeyId: process.env.S3_ACCESS_KEY_ID,
+          secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        }
+      : undefined,
   });
 
   // Courses
-  router.get('/courses', async (req, res, next) => {
+  router.get("/courses", async (req, res, next) => {
     try {
       const courses = await prisma.course.findMany({
         where: { isActive: true },
         include: {
           coupons: true,
-          testimonials: true
+          testimonials: true,
         },
-        orderBy: { createdAt: 'desc' },
-        take: 100 // Limit results
+        orderBy: { createdAt: "desc" },
+        take: 100, // Limit results
       });
-      
+
       // Replace S3 URLs with CloudFront URLs (if any still exist)
-      const coursesWithCloudFront = courses.map(course => ({
+      const coursesWithCloudFront = courses.map((course) => ({
         ...course,
-        imageUrl: course.imageUrl 
+        imageUrl: course.imageUrl
           ? course.imageUrl.replace(
-              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
-              'https://d270a3f3iqnh9i.cloudfront.net'
+              "https://sauvikbcabucket.s3.ap-south-1.amazonaws.com",
+              "https://d270a3f3iqnh9i.cloudfront.net",
             )
-          : course.imageUrl
+          : course.imageUrl,
       }));
-      
+
       // Set cache headers - reduced cache time for image updates
-      res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
+      res.set("Cache-Control", "private, max-age=30"); // Cache for 30 seconds
       res.json(coursesWithCloudFront);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.post('/courses', async (req, res, next) => {
+  router.post("/courses", async (req, res, next) => {
     try {
       const { coupons, ...courseData } = req.body;
       const data = upsertCourseSchema.parse(courseData);
       const course = await prisma.course.create({ data });
-      
+
       // Create coupons if provided
       if (coupons && coupons.length > 0) {
-        const couponData = coupons.map(coupon => ({
+        const couponData = coupons.map((coupon) => ({
           code: coupon.code,
           discountPercent: coupon.discountPercent,
-          courseId: course.id
+          courseId: course.id,
         }));
         await prisma.coupon.createMany({ data: couponData });
       }
-      
+
       res.json(course);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.put('/courses/:id', async (req, res, next) => {
+  router.put("/courses/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
       const data = upsertCourseSchema.parse(req.body);
       const course = await prisma.course.update({ where: { id }, data });
       res.json(course);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.get('/courses/:id', async (req, res, next) => {
+  router.get("/courses/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
-      const course = await prisma.course.findUnique({ 
+      const course = await prisma.course.findUnique({
         where: { id },
-        include: { 
+        include: {
           testimonials: true,
-          coupons: true
-        }
+          coupons: true,
+        },
       });
       if (!course) {
-        return res.status(404).json({ error: 'Course not found' });
+        return res.status(404).json({ error: "Course not found" });
       }
-      
+
       // Replace S3 URLs with CloudFront URLs (if any still exist)
       const courseWithCloudFront = {
         ...course,
-        imageUrl: course.imageUrl 
+        imageUrl: course.imageUrl
           ? course.imageUrl.replace(
-              'https://sauvikbcabucket.s3.ap-south-1.amazonaws.com',
-              'https://d270a3f3iqnh9i.cloudfront.net'
+              "https://sauvikbcabucket.s3.ap-south-1.amazonaws.com",
+              "https://d270a3f3iqnh9i.cloudfront.net",
             )
-          : course.imageUrl
+          : course.imageUrl,
       };
-      
+
       res.json(courseWithCloudFront);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.delete('/courses/:id', async (req, res, next) => {
+  router.delete("/courses/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
       console.log(`Attempting to delete course with ID: ${id}`);
-      
+
       // Check if course exists
       const course = await prisma.course.findUnique({ where: { id } });
       if (!course) {
         console.log(`Course not found with ID: ${id}`);
-        return res.status(404).json({ error: 'Course not found' });
+        return res.status(404).json({ error: "Course not found" });
       }
-      
+
       console.log(`Found course: ${course.title}, proceeding with deletion...`);
-      
+
       // Delete related data first (without transaction to avoid timeout)
       try {
         // Delete all course content for this course
-        const courseContentDeleted = await prisma.courseContent.deleteMany({ 
-          where: { courseId: id } 
+        const courseContentDeleted = await prisma.courseContent.deleteMany({
+          where: { courseId: id },
         });
-        console.log(`Deleted ${courseContentDeleted.count} course content records`);
-        
+        console.log(
+          `Deleted ${courseContentDeleted.count} course content records`,
+        );
+
         // Delete all purchases for this course
-        const purchasesDeleted = await prisma.purchase.deleteMany({ 
-          where: { courseId: id } 
+        const purchasesDeleted = await prisma.purchase.deleteMany({
+          where: { courseId: id },
         });
         console.log(`Deleted ${purchasesDeleted.count} purchase records`);
-        
+
         // Delete all monthly purchases for this course
-        const monthlyPurchasesDeleted = await prisma.monthlyPurchase.deleteMany({ 
-          where: { courseId: id } 
-        });
-        console.log(`Deleted ${monthlyPurchasesDeleted.count} monthly purchase records`);
-        
+        const monthlyPurchasesDeleted = await prisma.monthlyPurchase.deleteMany(
+          {
+            where: { courseId: id },
+          },
+        );
+        console.log(
+          `Deleted ${monthlyPurchasesDeleted.count} monthly purchase records`,
+        );
+
         // Delete all testimonials for this course
-        const testimonialsDeleted = await prisma.testimonial.deleteMany({ 
-          where: { courseId: id } 
+        const testimonialsDeleted = await prisma.testimonial.deleteMany({
+          where: { courseId: id },
         });
         console.log(`Deleted ${testimonialsDeleted.count} testimonial records`);
-        
+
         // Delete all coupons for this course
-        const couponsDeleted = await prisma.coupon.deleteMany({ 
-          where: { courseId: id } 
+        const couponsDeleted = await prisma.coupon.deleteMany({
+          where: { courseId: id },
         });
         console.log(`Deleted ${couponsDeleted.count} coupon records`);
-        
+
         // Delete all announcements for this course
-        const announcementsDeleted = await prisma.announcement.deleteMany({ 
-          where: { courseId: id } 
+        const announcementsDeleted = await prisma.announcement.deleteMany({
+          where: { courseId: id },
         });
-        console.log(`Deleted ${announcementsDeleted.count} announcement records`);
-        
+        console.log(
+          `Deleted ${announcementsDeleted.count} announcement records`,
+        );
+
         // Finally delete the course itself
         await prisma.course.delete({ where: { id } });
         console.log(`Successfully deleted course: ${course.title}`);
-        
       } catch (deleteError) {
-        console.error('Error during deletion:', deleteError);
+        console.error("Error during deletion:", deleteError);
         // Check if course still exists
-        const courseStillExists = await prisma.course.findUnique({ where: { id } });
+        const courseStillExists = await prisma.course.findUnique({
+          where: { id },
+        });
         if (courseStillExists) {
           throw deleteError; // Re-throw if course still exists
         }
         // If course is already deleted, consider it successful
-        console.log('Course was already deleted, considering operation successful');
+        console.log(
+          "Course was already deleted, considering operation successful",
+        );
       }
-      
-      res.json({ ok: true, message: 'Course and all associated data deleted successfully' });
-    } catch (e) { 
-      console.error('Error deleting course:', e);
-      next(e); 
+
+      res.json({
+        ok: true,
+        message: "Course and all associated data deleted successfully",
+      });
+    } catch (e) {
+      console.error("Error deleting course:", e);
+      next(e);
     }
   });
 
   // Purchases table
-  router.get('/purchases', async (req, res, next) => {
+  router.get("/purchases", async (req, res, next) => {
     try {
-      const list = await prisma.purchase.findMany({ 
-        include: { 
+      const list = await prisma.purchase.findMany({
+        include: {
           user: {
             select: {
               id: true,
               name: true,
-              email: true
-            }
-          }, 
+              email: true,
+            },
+          },
           course: {
             select: {
               id: true,
               title: true,
               isMonthlyPayment: true,
-              durationMonths: true
-            }
-          }
-        }, 
-        orderBy: { createdAt: 'desc' },
-        take: 100 // Limit results
+              durationMonths: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100, // Limit results
       });
-      
+
       // Set cache headers
-      res.set('Cache-Control', 'private, max-age=30'); // Cache for 30 seconds
+      res.set("Cache-Control", "private, max-age=30"); // Cache for 30 seconds
       res.json(list);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-
   // Webinars
-  router.post('/webinars', async (req, res, next) => {
+  router.post("/webinars", async (req, res, next) => {
     try {
       const data = webinarSchema.parse(req.body);
       const createData = { ...data };
@@ -264,17 +290,17 @@ export function adminRouter(prisma) {
       }
       const item = await prisma.webinar.create({ data: createData });
       res.json(item);
-    } catch (e) { 
-      if (e.name === 'ZodError') {
+    } catch (e) {
+      if (e.name === "ZodError") {
         return res.status(400).json({
           issues: e.issues,
-          message: 'Validation failed'
+          message: "Validation failed",
         });
       }
-      next(e); 
+      next(e);
     }
   });
-  router.put('/webinars/:id', async (req, res, next) => {
+  router.put("/webinars/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
       const data = webinarSchema.parse(req.body);
@@ -282,150 +308,175 @@ export function adminRouter(prisma) {
       if (data.startTime) {
         updateData.startTime = new Date(data.startTime);
       }
-      const item = await prisma.webinar.update({ where: { id }, data: updateData });
+      const item = await prisma.webinar.update({
+        where: { id },
+        data: updateData,
+      });
       res.json(item);
-    } catch (e) { 
-      if (e.name === 'ZodError') {
+    } catch (e) {
+      if (e.name === "ZodError") {
         return res.status(400).json({
           issues: e.issues,
-          message: 'Validation failed'
+          message: "Validation failed",
         });
       }
-      next(e); 
+      next(e);
     }
   });
-  router.delete('/webinars/:id', async (req, res, next) => {
+  router.delete("/webinars/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
       await prisma.webinar.delete({ where: { id } });
       res.json({ ok: true });
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-
   // Announcements
-  router.post('/announcements', async (req, res, next) => {
+  router.post("/announcements", async (req, res, next) => {
     try {
       const data = announcementSchema.parse(req.body);
       const ann = await prisma.announcement.create({ data });
-      
+
       // Create notification receipts for users
       if (data.courseId) {
         // Course-specific announcement: create receipts for users who purchased that course
         const coursePurchases = await prisma.purchase.findMany({
-          where: { courseId: data.courseId, status: 'PAID' },
-          select: { userId: true }
+          where: { courseId: data.courseId, status: "PAID" },
+          select: { userId: true },
         });
-        
-        const receipts = coursePurchases.map(purchase => ({
+
+        const receipts = coursePurchases.map((purchase) => ({
           userId: purchase.userId,
           announcementId: ann.id,
-          isRead: false
+          isRead: false,
         }));
-        
+
         if (receipts.length > 0) {
           await prisma.notificationReceipt.createMany({ data: receipts });
         }
       } else {
         // Global announcement: create receipts for all users
         const allUsers = await prisma.user.findMany({
-          select: { id: true }
+          select: { id: true },
         });
-        
-        const receipts = allUsers.map(user => ({
+
+        const receipts = allUsers.map((user) => ({
           userId: user.id,
           announcementId: ann.id,
-          isRead: false
+          isRead: false,
         }));
-        
+
         if (receipts.length > 0) {
           await prisma.notificationReceipt.createMany({ data: receipts });
         }
       }
-      
+
       res.json(ann);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // Delete announcement
-  router.delete('/announcements/:id', async (req, res, next) => {
+  router.delete("/announcements/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
-      
+
       // First delete all notification receipts for this announcement
       await prisma.notificationReceipt.deleteMany({
-        where: { announcementId: id }
+        where: { announcementId: id },
       });
-      
+
       // Then delete the announcement itself
       await prisma.announcement.delete({ where: { id } });
-      
-      res.json({ success: true, message: 'Announcement deleted successfully' });
-    } catch (e) { 
-      console.error('Error deleting announcement:', e);
-      next(e); 
+
+      res.json({ success: true, message: "Announcement deleted successfully" });
+    } catch (e) {
+      console.error("Error deleting announcement:", e);
+      next(e);
     }
   });
 
   // Analytics
-  router.get('/stats/monthly-sales', async (req, res, next) => {
+  router.get("/stats/monthly-sales", async (req, res, next) => {
     try {
       const year = parseInt(req.query.year, 10);
-      if (!year || Number.isNaN(year)) return res.status(400).json({ error: 'Invalid year' });
+      if (!year || Number.isNaN(year))
+        return res.status(400).json({ error: "Invalid year" });
       const start = new Date(`${year}-01-01T00:00:00.000Z`);
       const end = new Date(`${year + 1}-01-01T00:00:00.000Z`);
-      const rows = await prisma.$queryRawUnsafe(`
+      const rows = await prisma.$queryRawUnsafe(
+        `
         SELECT EXTRACT(MONTH FROM "createdAt") AS month, SUM("amountRupees") AS revenue, COUNT(*) AS orders
         FROM "Purchase"
         WHERE "createdAt" >= $1 AND "createdAt" < $2 AND status = 'PAID'
         GROUP BY month ORDER BY month;
-      `, start, end);
+      `,
+        start,
+        end,
+      );
       const result = Array.from({ length: 12 }, (_, i) => {
         const m = i + 1;
-        const row = Array.isArray(rows) ? rows.find(r => Number(r.month) === m) : null;
-        return { 
-          month: m, 
+        const row = Array.isArray(rows)
+          ? rows.find((r) => Number(r.month) === m)
+          : null;
+        return {
+          month: m,
           totalAmount: row ? Number(row.revenue) / 100 : 0, // Convert to rupees
-          orderCount: row ? Number(row.orders) : 0 
+          orderCount: row ? Number(row.orders) : 0,
         };
       });
       res.json(result);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.get('/stats/daily-sales', async (req, res, next) => {
+  router.get("/stats/daily-sales", async (req, res, next) => {
     try {
       const year = parseInt(req.query.year, 10);
       const month = parseInt(req.query.month, 10);
       if (!year || !month || Number.isNaN(year) || Number.isNaN(month)) {
-        return res.status(400).json({ error: 'Invalid year or month' });
+        return res.status(400).json({ error: "Invalid year or month" });
       }
-      
-      const start = new Date(`${year}-${month.toString().padStart(2, '0')}-01T00:00:00.000Z`);
+
+      const start = new Date(
+        `${year}-${month.toString().padStart(2, "0")}-01T00:00:00.000Z`,
+      );
       const end = new Date(year, month, 0, 23, 59, 59, 999); // Last day of month
-      
-      const rows = await prisma.$queryRawUnsafe(`
+
+      const rows = await prisma.$queryRawUnsafe(
+        `
         SELECT EXTRACT(DAY FROM "createdAt") AS day, SUM("amountRupees") AS revenue, COUNT(*) AS orders
         FROM "Purchase"
         WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND status = 'PAID'
         GROUP BY day ORDER BY day;
-      `, start, end);
-      
+      `,
+        start,
+        end,
+      );
+
       const daysInMonth = new Date(year, month, 0).getDate();
       const result = Array.from({ length: daysInMonth }, (_, i) => {
         const day = i + 1;
-        const row = Array.isArray(rows) ? rows.find(r => Number(r.day) === day) : null;
-        return { 
-          day: day, 
+        const row = Array.isArray(rows)
+          ? rows.find((r) => Number(r.day) === day)
+          : null;
+        return {
+          day: day,
           totalAmount: row ? Number(row.revenue) / 100 : 0, // Convert to rupees
-          orderCount: row ? Number(row.orders) : 0 
+          orderCount: row ? Number(row.orders) : 0,
         };
       });
       res.json(result);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.get('/stats/yearly-sales', async (req, res, next) => {
+  router.get("/stats/yearly-sales", async (req, res, next) => {
     try {
       const rows = await prisma.$queryRawUnsafe(`
         SELECT EXTRACT(YEAR FROM "createdAt") AS year, SUM("amountRupees") AS revenue, COUNT(*) AS orders
@@ -433,50 +484,60 @@ export function adminRouter(prisma) {
         WHERE status = 'PAID'
         GROUP BY year ORDER BY year;
       `);
-      
-      const result = Array.isArray(rows) ? rows.map(row => ({
-        year: Number(row.year),
-        totalAmount: Number(row.revenue), // Already in rupees
-        orderCount: Number(row.orders)
-      })) : [];
-      
+
+      const result = Array.isArray(rows)
+        ? rows.map((row) => ({
+            year: Number(row.year),
+            totalAmount: Number(row.revenue), // Already in rupees
+            orderCount: Number(row.orders),
+          }))
+        : [];
+
       res.json(result);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // Get detailed payments for specific date
-  router.get('/stats/payments-by-date', async (req, res, next) => {
+  router.get("/stats/payments-by-date", async (req, res, next) => {
     try {
       const { year, month, day } = req.query;
-      
+
       if (!year || Number.isNaN(parseInt(year))) {
-        return res.status(400).json({ error: 'Invalid year' });
+        return res.status(400).json({ error: "Invalid year" });
       }
 
       let startDate, endDate;
-      
+
       if (day && month) {
         // Specific day
         const dayNum = parseInt(day);
         const monthNum = parseInt(month);
         const yearNum = parseInt(year);
-        
+
         if (Number.isNaN(dayNum) || Number.isNaN(monthNum)) {
-          return res.status(400).json({ error: 'Invalid day or month' });
+          return res.status(400).json({ error: "Invalid day or month" });
         }
-        
-        startDate = new Date(`${yearNum}-${monthNum.toString().padStart(2, '0')}-${dayNum.toString().padStart(2, '0')}T00:00:00.000Z`);
-        endDate = new Date(`${yearNum}-${monthNum.toString().padStart(2, '0')}-${dayNum.toString().padStart(2, '0')}T23:59:59.999Z`);
+
+        startDate = new Date(
+          `${yearNum}-${monthNum.toString().padStart(2, "0")}-${dayNum.toString().padStart(2, "0")}T00:00:00.000Z`,
+        );
+        endDate = new Date(
+          `${yearNum}-${monthNum.toString().padStart(2, "0")}-${dayNum.toString().padStart(2, "0")}T23:59:59.999Z`,
+        );
       } else if (month) {
         // Specific month
         const monthNum = parseInt(month);
         const yearNum = parseInt(year);
-        
+
         if (Number.isNaN(monthNum)) {
-          return res.status(400).json({ error: 'Invalid month' });
+          return res.status(400).json({ error: "Invalid month" });
         }
-        
-        startDate = new Date(`${yearNum}-${monthNum.toString().padStart(2, '0')}-01T00:00:00.000Z`);
+
+        startDate = new Date(
+          `${yearNum}-${monthNum.toString().padStart(2, "0")}-01T00:00:00.000Z`,
+        );
         endDate = new Date(yearNum, monthNum, 0, 23, 59, 59, 999); // Last day of month
       } else {
         // Specific year
@@ -489,33 +550,33 @@ export function adminRouter(prisma) {
         where: {
           createdAt: {
             gte: startDate,
-            lte: endDate
+            lte: endDate,
           },
-          status: 'PAID'
+          status: "PAID",
         },
         include: {
           user: {
             select: {
               id: true,
               name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           course: {
             select: {
               id: true,
               title: true,
               isMonthlyPayment: true,
-              durationMonths: true
-            }
-          }
+              durationMonths: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
-        }
+          createdAt: "desc",
+        },
       });
 
-      const result = payments.map(payment => ({
+      const result = payments.map((payment) => ({
         id: payment.id,
         amount: parseFloat(payment.amountRupees), // Already in rupees
         status: payment.status,
@@ -528,30 +589,30 @@ export function adminRouter(prisma) {
         user: {
           id: payment.user.id,
           name: payment.user.name,
-          email: payment.user.email
+          email: payment.user.email,
         },
         course: {
           id: payment.course.id,
           title: payment.course.title,
           isMonthlyPayment: payment.course.isMonthlyPayment,
-          durationMonths: payment.course.durationMonths
-        }
+          durationMonths: payment.course.durationMonths,
+        },
       }));
 
       res.json(result);
-    } catch (e) { 
-      console.error('Error fetching payments by date:', e);
-      next(e); 
+    } catch (e) {
+      console.error("Error fetching payments by date:", e);
+      next(e);
     }
   });
 
   // Users list (read-only)
-  router.get('/users', async (req, res, next) => {
+  router.get("/users", async (req, res, next) => {
     try {
       const { courseSlug, filter } = req.query;
-      
+
       let whereClause = {};
-      
+
       // Filter by course if courseSlug is provided
       if (courseSlug) {
         whereClause = {
@@ -560,31 +621,31 @@ export function adminRouter(prisma) {
               purchases: {
                 some: {
                   course: { slug: courseSlug },
-                  status: 'PAID'
-                }
-              }
+                  status: "PAID",
+                },
+              },
             },
             {
               monthlyPurchases: {
                 some: {
                   course: { slug: courseSlug },
-                  status: 'PAID'
-                }
-              }
-            }
-          ]
+                  status: "PAID",
+                },
+              },
+            },
+          ],
         };
       }
-      
+
       // Filter by user type
-      if (filter === 'logged-in') {
+      if (filter === "logged-in") {
         whereClause = {
           ...whereClause,
-          emailVerifiedAt: { not: null }
+          emailVerifiedAt: { not: null },
         };
       }
-      
-      const users = await prisma.user.findMany({ 
+
+      const users = await prisma.user.findMany({
         where: whereClause,
         select: {
           id: true,
@@ -606,10 +667,10 @@ export function adminRouter(prisma) {
               course: {
                 select: {
                   title: true,
-                  slug: true
-                }
-              }
-            }
+                  slug: true,
+                },
+              },
+            },
           },
           monthlyPurchases: {
             select: {
@@ -618,17 +679,17 @@ export function adminRouter(prisma) {
               course: {
                 select: {
                   title: true,
-                  slug: true
-                }
-              }
-            }
-          }
+                  slug: true,
+                },
+              },
+            },
+          },
         },
-        orderBy: { createdAt: 'desc' },
-        take: 100 // Limit results
+        orderBy: { createdAt: "desc" },
+        take: 100, // Limit results
       });
-      
-      const mapped = users.map(u => ({
+
+      const mapped = users.map((u) => ({
         id: u.id,
         name: u.name,
         email: u.email,
@@ -642,64 +703,85 @@ export function adminRouter(prisma) {
         interestStatus: u.interestStatus,
         purchasesCount: (() => {
           // Count unique courses from regular purchases
-          const regularCourseIds = new Set(u.purchases.filter(p=>p.status==='PAID').map(p => p.course.id));
+          const regularCourseIds = new Set(
+            u.purchases
+              .filter((p) => p.status === "PAID")
+              .map((p) => p.course.id),
+          );
           // Count unique courses from monthly purchases
-          const monthlyCourseIds = new Set(u.monthlyPurchases.filter(p=>p.status==='PAID').map(p => p.course.id));
+          const monthlyCourseIds = new Set(
+            u.monthlyPurchases
+              .filter((p) => p.status === "PAID")
+              .map((p) => p.course.id),
+          );
           // Combine and count unique courses
-          const allCourseIds = new Set([...regularCourseIds, ...monthlyCourseIds]);
+          const allCourseIds = new Set([
+            ...regularCourseIds,
+            ...monthlyCourseIds,
+          ]);
           return allCourseIds.size;
         })(),
-        totalPaidRupees: u.purchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+parseFloat(b.amountRupees),0) + u.monthlyPurchases.filter(p=>p.status==='PAID').reduce((a,b)=>a+parseFloat(b.amountRupees),0),
+        totalPaidRupees:
+          u.purchases
+            .filter((p) => p.status === "PAID")
+            .reduce((a, b) => a + parseFloat(b.amountRupees), 0) +
+          u.monthlyPurchases
+            .filter((p) => p.status === "PAID")
+            .reduce((a, b) => a + parseFloat(b.amountRupees), 0),
         courses: (() => {
           const courseMap = new Map();
-          
+
           // Add regular purchases
-          u.purchases.filter(p=>p.status==='PAID').forEach(p => {
-            courseMap.set(p.course.id, { 
-              title: p.course.title, 
-              slug: p.course.slug, 
-              type: 'regular' 
+          u.purchases
+            .filter((p) => p.status === "PAID")
+            .forEach((p) => {
+              courseMap.set(p.course.id, {
+                title: p.course.title,
+                slug: p.course.slug,
+                type: "regular",
+              });
             });
-          });
-          
+
           // Add monthly purchases (will override regular if same course)
-          u.monthlyPurchases.filter(p=>p.status==='PAID').forEach(p => {
-            courseMap.set(p.course.id, { 
-              title: p.course.title, 
-              slug: p.course.slug, 
-              type: 'monthly' 
+          u.monthlyPurchases
+            .filter((p) => p.status === "PAID")
+            .forEach((p) => {
+              courseMap.set(p.course.id, {
+                title: p.course.title,
+                slug: p.course.slug,
+                type: "monthly",
+              });
             });
-          });
-          
+
           return Array.from(courseMap.values());
-        })()
+        })(),
       }));
-      
-      
+
       // Set cache headers
-      res.set('Cache-Control', 'private, max-age=60'); // Cache for 1 minute
+      res.set("Cache-Control", "private, max-age=60"); // Cache for 1 minute
       res.json(mapped);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // User statistics for category cards
-  router.get('/users/stats', async (req, res, next) => {
+  router.get("/users/stats", async (req, res, next) => {
     try {
       // Get all courses
       const courses = await prisma.course.findMany({
         where: { isActive: true },
         select: { id: true, title: true, slug: true },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: "desc" },
       });
 
       // Get logged-in users count (users with verified emails)
       const loggedInUsersCount = await prisma.user.count({
-        where: { emailVerifiedAt: { not: null } }
+        where: { emailVerifiedAt: { not: null } },
       });
 
       // Get total users count
       const totalUsersCount = await prisma.user.count();
-      
 
       // Get course-specific user counts
       const courseStats = await Promise.all(
@@ -711,304 +793,371 @@ export function adminRouter(prisma) {
                   purchases: {
                     some: {
                       courseId: course.id,
-                      status: 'PAID'
-                    }
-                  }
+                      status: "PAID",
+                    },
+                  },
                 },
                 {
                   monthlyPurchases: {
                     some: {
                       courseId: course.id,
-                      status: 'PAID'
-                    }
-                  }
-                }
-              ]
-            }
+                      status: "PAID",
+                    },
+                  },
+                },
+              ],
+            },
           });
 
           return {
             id: course.id,
             title: course.title,
             slug: course.slug,
-            userCount: courseUsersCount
+            userCount: courseUsersCount,
           };
-        })
+        }),
       );
 
       res.json({
         totalUsers: totalUsersCount,
         loggedInUsers: loggedInUsersCount,
-        courses: courseStats
+        courses: courseStats,
       });
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-// Presigned upload URL for S3 (course posters or user avatars)
-router.post('/uploads/presign', async (req, res, next) => {
-  try {
-    console.log('=== ADMIN S3 PRESIGN DEBUG ===');
-    
-    // Validate the incoming request body with zod
-    const body = z.object({ 
-      key: z.string(),           // File key to upload to S3
-      contentType: z.string().optional()  // Optional content type (image/jpeg, etc.)
-    }).parse(req.body);
+  // Presigned upload URL for S3 (course posters or user avatars)
+  router.post("/uploads/presign", async (req, res, next) => {
+    try {
+      console.log("=== ADMIN S3 PRESIGN DEBUG ===");
 
-    console.log('Admin presign request body:', body);
+      // Validate the incoming request body with zod
+      const body = z
+        .object({
+          key: z.string(), // File key to upload to S3
+          contentType: z.string().optional(), // Optional content type (image/jpeg, etc.)
+        })
+        .parse(req.body);
 
-    // Fetch the S3 bucket name from environment variables
-    const bucket = process.env.S3_BUCKET;
-    if (!bucket) return res.status(500).json({ error: 'S3 bucket not configured' });
+      console.log("Admin presign request body:", body);
 
-    console.log('S3 bucket:', bucket);
-    console.log('S3 region:', process.env.S3_REGION);
+      // Fetch the S3 bucket name from environment variables
+      const bucket = process.env.S3_BUCKET;
+      if (!bucket)
+        return res.status(500).json({ error: "S3 bucket not configured" });
 
-    // S3 upload without ACL (bucket has ACLs disabled)
-    const post = await createPresignedPost(s3, {
-      Bucket: bucket,
-      Key: body.key,
-      Conditions: [
-        ['starts-with', '$Content-Type', '']
-      ],
-      Fields: { 'Content-Type': body.contentType || 'application/octet-stream' },
-      Expires: 60
-    });
+      console.log("S3 bucket:", bucket);
+      console.log("S3 region:", process.env.S3_REGION);
 
-    const publicUrl = `https://d270a3f3iqnh9i.cloudfront.net/${body.key}`;
-    
-    console.log('Generated presigned POST:', post);
-    console.log('Public URL:', publicUrl);
-    console.log('=== END ADMIN S3 PRESIGN DEBUG ===');
-    
-    res.json({ mode: 'post', post, publicUrl });
-  } catch (e) {
-    next(e);  // Pass any errors to the next middleware (error handler)
-  }
-});
+      // S3 upload without ACL (bucket has ACLs disabled)
+      const post = await createPresignedPost(s3, {
+        Bucket: bucket,
+        Key: body.key,
+        Conditions: [["starts-with", "$Content-Type", ""]],
+        Fields: {
+          "Content-Type": body.contentType || "application/octet-stream",
+        },
+        Expires: 60,
+      });
+
+      const publicUrl = `https://d270a3f3iqnh9i.cloudfront.net/${body.key}`;
+
+      console.log("Generated presigned POST:", post);
+      console.log("Public URL:", publicUrl);
+      console.log("=== END ADMIN S3 PRESIGN DEBUG ===");
+
+      res.json({ mode: "post", post, publicUrl });
+    } catch (e) {
+      next(e); // Pass any errors to the next middleware (error handler)
+    }
+  });
 
   // Update user (admin)
-  router.put('/users/:id', async (req, res, next) => {
+  router.put("/users/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
-      const data = z.object({ name: z.string().min(1), email: z.string().email(), role: z.enum(['USER','ADMIN','INSTRUCTOR','STUDENT']), age: z.union([z.coerce.number().int().nonnegative(), z.string().length(0)]), dateOfBirth: z.string().optional() }).parse(req.body);
+      const data = z
+        .object({
+          name: z.string().min(1),
+          email: z.string().email(),
+          role: z.enum(["USER", "ADMIN", "INSTRUCTOR", "STUDENT"]),
+          age: z.union([
+            z.coerce.number().int().nonnegative(),
+            z.string().length(0),
+          ]),
+          dateOfBirth: z.string().optional(),
+        })
+        .parse(req.body);
       const update = {
         name: data.name,
         email: data.email,
         role: data.role,
-        age: data.age === '' ? null : Number(data.age),
-        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null
+        age: data.age === "" ? null : Number(data.age),
+        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
       };
       const user = await prisma.user.update({ where: { id }, data: update });
       res.json(user);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // Testimonials CRUD
-  router.get('/testimonials', async (req, res, next) => {
+  router.get("/testimonials", async (req, res, next) => {
     try {
-      const testimonials = await prisma.testimonial.findMany({ orderBy: { createdAt: 'desc' } });
+      const testimonials = await prisma.testimonial.findMany({
+        orderBy: { createdAt: "desc" },
+      });
       res.json(testimonials);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.post('/testimonials', async (req, res, next) => {
+  router.post("/testimonials", async (req, res, next) => {
     try {
-      const data = z.object({
-        studentName: z.string().min(1),
-        studentImage: z.string().optional(),
-        studentAbout: z.string().optional(),
-        comment: z.string().min(1),
-        rating: z.number().int().min(1).max(5),
-        courseId: z.string().optional()
-      }).parse(req.body);
+      const data = z
+        .object({
+          studentName: z.string().min(1),
+          studentImage: z.string().optional(),
+          studentAbout: z.string().optional(),
+          comment: z.string().min(1),
+          rating: z.number().int().min(1).max(5),
+          courseId: z.string().optional(),
+        })
+        .parse(req.body);
       const testimonial = await prisma.testimonial.create({ data });
       res.json(testimonial);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.put('/testimonials/:id', async (req, res, next) => {
+  router.put("/testimonials/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
-      const data = z.object({
-        studentName: z.string().min(1),
-        studentImage: z.string().optional(),
-        studentAbout: z.string().optional(),
-        comment: z.string().min(1),
-        rating: z.number().int().min(1).max(5),
-        courseId: z.string().optional()
-      }).parse(req.body);
-      const testimonial = await prisma.testimonial.update({ where: { id }, data });
+      const data = z
+        .object({
+          studentName: z.string().min(1),
+          studentImage: z.string().optional(),
+          studentAbout: z.string().optional(),
+          comment: z.string().min(1),
+          rating: z.number().int().min(1).max(5),
+          courseId: z.string().optional(),
+        })
+        .parse(req.body);
+      const testimonial = await prisma.testimonial.update({
+        where: { id },
+        data,
+      });
       res.json(testimonial);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.delete('/testimonials/:id', async (req, res, next) => {
+  router.delete("/testimonials/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
       await prisma.testimonial.delete({ where: { id } });
       res.json({ success: true });
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // YouTube Videos CRUD
-  router.get('/youtube-videos', async (req, res, next) => {
+  router.get("/youtube-videos", async (req, res, next) => {
     try {
-      const videos = await prisma.youTubeVideo.findMany({ 
-        orderBy: { createdAt: 'desc' } 
+      const videos = await prisma.youTubeVideo.findMany({
+        orderBy: { createdAt: "desc" },
       });
       res.json(videos);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.post('/youtube-videos', async (req, res, next) => {
+  router.post("/youtube-videos", async (req, res, next) => {
     try {
-      const data = z.object({
-        title: z.string().min(1),
-        videoUrl: z.string().url(),
-        thumbnailUrl: z.string().url().optional(),
-        isActive: z.boolean().optional()
-      }).parse(req.body);
-      
+      const data = z
+        .object({
+          title: z.string().min(1),
+          videoUrl: z.string().url(),
+          thumbnailUrl: z.string().url().optional(),
+          isActive: z.boolean().optional(),
+        })
+        .parse(req.body);
+
       const video = await prisma.youTubeVideo.create({ data });
       res.json(video);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.put('/youtube-videos/:id', async (req, res, next) => {
+  router.put("/youtube-videos/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
-      const data = z.object({
-        title: z.string().min(1).optional(),
-        videoUrl: z.string().url().optional(),
-        thumbnailUrl: z.string().url().optional(),
-        isActive: z.boolean().optional()
-      }).parse(req.body);
+      const data = z
+        .object({
+          title: z.string().min(1).optional(),
+          videoUrl: z.string().url().optional(),
+          thumbnailUrl: z.string().url().optional(),
+          isActive: z.boolean().optional(),
+        })
+        .parse(req.body);
       const video = await prisma.youTubeVideo.update({ where: { id }, data });
       res.json(video);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.delete('/youtube-videos/:id', async (req, res, next) => {
+  router.delete("/youtube-videos/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
       await prisma.youTubeVideo.delete({ where: { id } });
       res.json({ success: true });
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // Coupons CRUD
-  router.get('/courses/:courseId/coupons', async (req, res, next) => {
+  router.get("/courses/:courseId/coupons", async (req, res, next) => {
     try {
       const { courseId } = req.params;
-      const coupons = await prisma.coupon.findMany({ 
+      const coupons = await prisma.coupon.findMany({
         where: { courseId },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: "desc" },
       });
       res.json(coupons);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.post('/courses/:courseId/coupons', async (req, res, next) => {
+  router.post("/courses/:courseId/coupons", async (req, res, next) => {
     try {
       const { courseId } = req.params;
-      const data = z.object({
-        code: z.string().min(1),
-        discountPercent: z.number().int().min(1).max(100)
-      }).parse(req.body);
-      const coupon = await prisma.coupon.create({ 
-        data: { ...data, courseId }
+      const data = z
+        .object({
+          code: z.string().min(1),
+          discountPercent: z.number().int().min(1).max(100),
+        })
+        .parse(req.body);
+      const coupon = await prisma.coupon.create({
+        data: { ...data, courseId },
       });
       res.json(coupon);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.put('/coupons/:id', async (req, res, next) => {
+  router.put("/coupons/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
-      const data = z.object({
-        code: z.string().min(1),
-        discountPercent: z.number().int().min(1).max(100),
-        isActive: z.boolean().optional()
-      }).parse(req.body);
+      const data = z
+        .object({
+          code: z.string().min(1),
+          discountPercent: z.number().int().min(1).max(100),
+          isActive: z.boolean().optional(),
+        })
+        .parse(req.body);
       const coupon = await prisma.coupon.update({ where: { id }, data });
       res.json(coupon);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.delete('/coupons/:id', async (req, res, next) => {
+  router.delete("/coupons/:id", async (req, res, next) => {
     try {
       const id = req.params.id;
       await prisma.coupon.delete({ where: { id } });
       res.json({ success: true });
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // Meeting Requests CRUD
-  router.get('/meeting-requests', async (req, res, next) => {
+  router.get("/meeting-requests", async (req, res, next) => {
     try {
-      const requests = await prisma.meetingRequest.findMany({ 
+      const requests = await prisma.meetingRequest.findMany({
         include: { user: { select: { name: true, email: true } } },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: "desc" },
       });
       res.json(requests);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.put('/meeting-requests/:id/approve', async (req, res, next) => {
+  router.put("/meeting-requests/:id/approve", async (req, res, next) => {
     try {
       const id = req.params.id;
       const { adminMessage } = req.body;
-      const request = await prisma.meetingRequest.update({ 
-        where: { id }, 
-        data: { 
-          status: 'APPROVED',
-          adminMessage: adminMessage || 'Your meeting request has been approved! We will contact you soon to schedule the session.'
-        }
+      const request = await prisma.meetingRequest.update({
+        where: { id },
+        data: {
+          status: "APPROVED",
+          adminMessage:
+            adminMessage ||
+            "Your meeting request has been approved! We will contact you soon to schedule the session.",
+        },
       });
       res.json(request);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
-  router.put('/meeting-requests/:id/decline', async (req, res, next) => {
+  router.put("/meeting-requests/:id/decline", async (req, res, next) => {
     try {
       const id = req.params.id;
       const { adminMessage } = req.body;
-      const request = await prisma.meetingRequest.update({ 
-        where: { id }, 
-        data: { 
-          status: 'DECLINED',
-          adminMessage: adminMessage || 'Unfortunately, we cannot accommodate your meeting request at this time. Please try again later.'
-        }
+      const request = await prisma.meetingRequest.update({
+        where: { id },
+        data: {
+          status: "DECLINED",
+          adminMessage:
+            adminMessage ||
+            "Unfortunately, we cannot accommodate your meeting request at this time. Please try again later.",
+        },
       });
       res.json(request);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 
   // Cleanup failed purchases endpoint
-  router.post('/cleanup-failed-purchases', async (req, res, next) => {
+  router.post("/cleanup-failed-purchases", async (req, res, next) => {
     try {
       // Delete PENDING purchases older than 1 hour
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const deletedCount = await prisma.purchase.deleteMany({
         where: {
-          status: 'PENDING',
+          status: "PENDING",
           createdAt: {
-            lt: oneHourAgo
-          }
-        }
+            lt: oneHourAgo,
+          },
+        },
       });
 
-      res.json({ 
+      res.json({
         message: `Cleaned up ${deletedCount.count} failed purchase records`,
-        deletedCount: deletedCount.count
+        deletedCount: deletedCount.count,
       });
-    } catch (e) { 
-      next(e); 
+    } catch (e) {
+      next(e);
     }
   });
 
   return router;
 }
-
-
