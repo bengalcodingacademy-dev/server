@@ -8,6 +8,7 @@ const upsertCourseSchema = z.object({
   title: z.string().min(2),
   slug: z.string().min(2),
   imageUrl: z.string().url().nullable().optional(),
+  admissionStatus:z.enum(["OPEN","CLOSED","COMING_SOON"]),
   priceRupees: z.number().nonnegative(),
   shortDesc: z.string().min(2),
   longDesc: z.string().min(2),
@@ -113,11 +114,14 @@ export function adminRouter(prisma) {
   router.put('/courses/:id', async (req, res, next) => {
     try {
       const id = req.params.id;
+      console.log(req.body)
       const data = upsertCourseSchema.parse(req.body);
       const course = await prisma.course.update({ where: { id }, data });
       res.json(course);
     } catch (e) { next(e); }
   });
+
+
 
   router.get('/courses/:id', async (req, res, next) => {
     try {
