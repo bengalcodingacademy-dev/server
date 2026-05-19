@@ -12,3 +12,5 @@ node_modules
 # Log files
 logs/
 *.log
+
+neon.dump

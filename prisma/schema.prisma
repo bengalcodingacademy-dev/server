@@ -8,33 +8,33 @@ datasource db {
 }
 
 model User {
-  id               String                @id @default(uuid())
-  name             String
-  email            String                @unique
-  phone            String?               @unique
-  passwordHash     String
-  role             Role                  @default(STUDENT)
-  createdAt        DateTime              @default(now())
-  age              Int?
-  isSTCETTrainingStudent Boolean?        @map("is_STCET_Training_Student")
-  stcetTrainingBatch Int?                @map("STCET_Training_Batch")
-  resetToken       String?
-  resetTokenExp    DateTime?
-  dateOfBirth      DateTime?
-  emailVerifiedAt  DateTime?
-  phoneVerifiedAt  DateTime?
-  otpCode          String?
-  otpExpiresAt     DateTime?
-  photoUrl         String?
-  interestStatus   InterestStatus        @default(INTERESTED)
-  meetingRequests  MeetingRequest[]
-  monthlyPurchases MonthlyPurchase[]
-  notifications    NotificationReceipt[]
-  purchases        Purchase[]
-  quizExamAttempts QuizExamAttempt[]
-  quizExamAnalytics QuizExamAnalytics[]
-  purchaseNotifications PurchaseNotification[]
-  stcetTestAttempts StcetTestAttempt[]
+  id                     String                 @id @default(uuid())
+  name                   String
+  email                  String                 @unique
+  phone                  String?                @unique
+  passwordHash           String
+  role                   Role                   @default(STUDENT)
+  createdAt              DateTime               @default(now())
+  age                    Int?
+  isSTCETTrainingStudent Boolean?               @map("is_STCET_Training_Student")
+  stcetTrainingBatch     Int?                   @map("STCET_Training_Batch")
+  resetToken             String?
+  resetTokenExp          DateTime?
+  dateOfBirth            DateTime?
+  emailVerifiedAt        DateTime?
+  phoneVerifiedAt        DateTime?
+  otpCode                String?
+  otpExpiresAt           DateTime?
+  photoUrl               String?
+  interestStatus         InterestStatus         @default(INTERESTED)
+  meetingRequests        MeetingRequest[]
+  monthlyPurchases       MonthlyPurchase[]
+  notifications          NotificationReceipt[]
+  purchases              Purchase[]
+  purchaseNotifications  PurchaseNotification[]
+  quizExamAnalytics      QuizExamAnalytics[]
+  quizExamAttempts       QuizExamAttempt[]
+  stcetTestAttempts      StcetTestAttempt[]
 
   @@index([role])
   @@index([createdAt])
@@ -43,43 +43,44 @@ model User {
 }
 
 model Course {
-  id               String            @id @default(uuid())
-  title            String
-  slug             String            @unique
-  imageUrl         String?
-  shortDesc        String
-  longDesc         String
-  duration         String?
-  startDate        DateTime?
-  roadmapJson      Json?
-  syllabusJson     Json?
-  isActive         Boolean           @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  aboutCourse      String?
-  courseIncludes   Json?
-  endDate          DateTime?
-  language         String            @default("bengali")
-  modulesJson      Json?
-  numberOfLectures Int?
-  numberOfModules  Int?
-  numberOfStudents Int?              @default(0)
-  starRating       Float?            @default(0.0)
-  durationMonths   Int?
-  isMonthlyPayment Boolean           @default(false)
-  priceRupees      Decimal           @db.Decimal(10, 2)
-  monthlyFeeRupees Decimal?          @db.Decimal(10, 2)
-  programmingLanguage String?        @default("C++")
-  classSchedule    String?           @default("[Monday, Wednesday, Saturday, Sunday]")
-  classTimings     String?           @default("8:30pm - 11pm")
-  announcements    Announcement[]
-  coupons          Coupon[]
-  monthlyPurchases MonthlyPurchase[]
-  purchases        Purchase[]
-  testimonials     Testimonial[]
-  content          CourseContent[]
-  quizExams        QuizExam[]
+  id                    String                 @id @default(uuid())
+  title                 String
+  slug                  String                 @unique
+  imageUrl              String?
+  shortDesc             String
+  longDesc              String
+  duration              String?
+  startDate             DateTime?
+  roadmapJson           Json?
+  syllabusJson          Json?
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  aboutCourse           String?
+  courseIncludes        Json?
+  endDate               DateTime?
+  language              String                 @default("bengali")
+  modulesJson           Json?
+  numberOfLectures      Int?
+  numberOfModules       Int?
+  numberOfStudents      Int?                   @default(0)
+  starRating            Float?                 @default(0.0)
+  durationMonths        Int?
+  isMonthlyPayment      Boolean                @default(false)
+  priceRupees           Decimal                @db.Decimal(10, 2)
+  monthlyFeeRupees      Decimal?               @db.Decimal(10, 2)
+  programmingLanguage   String?                @default("C++")
+  classSchedule         String?                @default("[Monday, Wednesday, Saturday, Sunday]")
+  classTimings          String?                @default("8:30pm - 11pm")
+  admissionStatus       AdmissionStatus        @default(COMING_SOON)
+  announcements         Announcement[]
+  coupons               Coupon[]
+  monthlyPurchases      MonthlyPurchase[]
+  purchases             Purchase[]
   purchaseNotifications PurchaseNotification[]
+  quizExams             QuizExam[]
+  testimonials          Testimonial[]
+  content               CourseContent[]
 
   @@index([isActive])
   @@index([slug])
@@ -178,9 +179,7 @@ model Coupon {
   code            String   @unique
   discountPercent Int
   courseId        String
-  // Maximum times this coupon can be used (null/omitted = unlimited)
   maxLimit        Int?
-  // How many times this coupon has been used
   usedLimit       Int      @default(0)
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
@@ -227,18 +226,18 @@ model MeetingRequest {
 }
 
 model CourseContent {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   courseId    String
   monthNumber Int
   topicName   String
   videoLink   String?
   githubRepo  String?
   notes       String?
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   quizExams   QuizExam[]
+  course      Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
   @@index([courseId, monthNumber])
@@ -263,6 +262,223 @@ model YouTubeVideo {
   @@index([createdAt])
 }
 
+model UniqueVisitor {
+  id        String   @id @default(uuid())
+  ipAddress String
+  userAgent String?
+  date      DateTime @default(now()) @db.Date
+  createdAt DateTime @default(now())
+
+  @@unique([ipAddress, date])
+  @@index([date])
+  @@index([ipAddress])
+}
+
+model QuizExam {
+  id              String             @id @default(uuid())
+  courseId        String
+  monthNumber     Int
+  lessonId        String?
+  title           String
+  totalMarks      Int                @default(0)
+  durationMinutes Int                @default(30)
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  course          Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson          CourseContent?     @relation(fields: [lessonId], references: [id])
+  analytics       QuizExamAnalytics?
+  attempts        QuizExamAttempt[]
+  questions       QuizExamQuestion[]
+
+  @@index([courseId])
+  @@index([monthNumber])
+  @@index([lessonId])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([courseId, monthNumber])
+}
+
+model QuizExamQuestion {
+  id            String          @id @default(uuid())
+  quizId        String
+  questionText  String
+  options       Json
+  correctAnswer String
+  marks         Int             @default(1)
+  difficulty    DifficultyLevel @default(MEDIUM)
+  createdAt     DateTime        @default(now())
+  quiz          QuizExam        @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+  @@index([difficulty])
+  @@index([createdAt])
+}
+
+model QuizExamAttempt {
+  id          String    @id @default(uuid())
+  quizId      String
+  userId      String
+  score       Int       @default(0)
+  totalMarks  Int       @default(0)
+  percentage  Float     @default(0.0)
+  startedAt   DateTime  @default(now())
+  submittedAt DateTime?
+  rank        Int?
+  details     Json      @default("{}")
+  quiz        QuizExam  @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+  @@index([userId])
+  @@index([score])
+  @@index([percentage])
+  @@index([rank])
+  @@index([submittedAt])
+  @@index([quizId, userId])
+  @@index([quizId, score])
+}
+
+model QuizExamAnalytics {
+  id            String   @id @default(uuid())
+  quizId        String   @unique
+  averageScore  Float    @default(0.0)
+  highestScore  Float    @default(0.0)
+  lowestScore   Float    @default(0.0)
+  totalAttempts Int      @default(0)
+  topperId      String?
+  createdAt     DateTime @default(now())
+  quiz          QuizExam @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  topper        User?    @relation(fields: [topperId], references: [id])
+
+  @@index([quizId])
+  @@index([topperId])
+  @@index([createdAt])
+}
+
+model PurchaseNotification {
+  id         String   @id @default(uuid())
+  type       String
+  title      String
+  message    String
+  amount     Float?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  userId     String
+  courseId   String
+  purchaseId String?
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([courseId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([purchaseId])
+}
+
+model StcetTest {
+  id                   String              @id @default(uuid())
+  title                String
+  description          String?
+  instructions         String?
+  status               StcetTestStatus     @default(INACTIVE)
+  durationMinutes      Int
+  totalMarks           Int                 @default(0)
+  startsAt             DateTime
+  endsAt               DateTime
+  resultsPublishedAt   DateTime?
+  resultsPublishedById String?
+  createdById          String
+  updatedById          String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  attempts             StcetTestAttempt[]
+  questions            StcetTestQuestion[]
+
+  @@index([status])
+  @@index([startsAt])
+  @@index([endsAt])
+  @@index([resultsPublishedAt])
+  @@index([createdAt])
+}
+
+model StcetTestQuestion {
+  id                      String            @id @default(uuid())
+  testId                  String
+  type                    StcetQuestionType
+  prompt                  String
+  description             String?
+  marks                   Int
+  sortOrder               Int               @default(0)
+  options                 Json?
+  correctOption           String?
+  codingLanguage          String?
+  referenceScreenshotUrls Json?
+  maxScreenshots          Int               @default(3)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  answers                 StcetTestAnswer[]
+  test                    StcetTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@index([type])
+  @@index([sortOrder])
+}
+
+model StcetTestAttempt {
+  id               String             @id @default(uuid())
+  testId           String
+  userId           String
+  status           StcetAttemptStatus @default(IN_PROGRESS)
+  reviewStatus     StcetReviewStatus  @default(NOT_REQUIRED)
+  autoScore        Int                @default(0)
+  manualScore      Int                @default(0)
+  totalScore       Int                @default(0)
+  totalMarks       Int                @default(0)
+  percentage       Float              @default(0.0)
+  generalFeedback  String?
+  startedAt        DateTime           @default(now())
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  timeTakenSeconds Int?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  answers          StcetTestAnswer[]
+  test             StcetTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, userId])
+  @@index([testId])
+  @@index([userId])
+  @@index([status])
+  @@index([reviewStatus])
+  @@index([submittedAt])
+}
+
+model StcetTestAnswer {
+  id                 String            @id @default(uuid())
+  attemptId          String
+  questionId         String
+  selectedOption     String?
+  codeAnswer         String?
+  submittedLanguage  String?
+  screenshotUrls     Json              @default("[]")
+  isCorrect          Boolean?
+  autoAwardedMarks   Int               @default(0)
+  manualAwardedMarks Int?
+  finalAwardedMarks  Int               @default(0)
+  reviewerNotes      String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  attempt            StcetTestAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question           StcetTestQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+}
+
 enum Role {
   USER
   ADMIN
@@ -281,21 +497,6 @@ enum InterestStatus {
   NOT_INTERESTED
   PURCHASED
 }
-
-model UniqueVisitor {
-  id        String   @id @default(uuid())
-  ipAddress String
-  userAgent String?
-  date      DateTime @default(now()) @db.Date
-  createdAt DateTime @default(now())
-
-  @@unique([ipAddress, date])
-  @@index([date])
-  @@index([ipAddress])
-}
-
-
-// New Quiz Tracking System Models
 
 enum DifficultyLevel {
   EASY
@@ -325,218 +526,8 @@ enum StcetReviewStatus {
   REVIEWED
 }
 
-model QuizExam {
-  id               String   @id @default(uuid())
-  courseId         String
-  monthNumber      Int
-  lessonId         String?
-  title            String
-  totalMarks       Int      @default(0)
-  durationMinutes  Int      @default(30)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  
-  // Relations
-  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson           CourseContent? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  questions        QuizExamQuestion[]
-  attempts         QuizExamAttempt[]
-  analytics        QuizExamAnalytics?
-  
-  @@index([courseId])
-  @@index([monthNumber])
-  @@index([lessonId])
-  @@index([isActive])
-  @@index([createdAt])
-  @@index([courseId, monthNumber])
-}
-
-model QuizExamQuestion {
-  id             String         @id @default(uuid())
-  quizId         String
-  questionText   String
-  options        Json           // JSONB array of answer choices
-  correctAnswer  String
-  marks          Int            @default(1)
-  difficulty     DifficultyLevel @default(MEDIUM)
-  createdAt      DateTime       @default(now())
-  
-  // Relations
-  quiz           QuizExam       @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  
-  @@index([quizId])
-  @@index([difficulty])
-  @@index([createdAt])
-}
-
-model QuizExamAttempt {
-  id           String    @id @default(uuid())
-  quizId       String
-  userId       String
-  score        Int       @default(0)
-  totalMarks   Int       @default(0)
-  percentage   Float     @default(0.0)
-  startedAt    DateTime  @default(now())
-  submittedAt  DateTime?
-  rank         Int?
-  details      Json      @default("{}") // JSONB object storing user answers
-  
-  // Relations
-  quiz         QuizExam  @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([quizId])
-  @@index([userId])
-  @@index([score])
-  @@index([percentage])
-  @@index([rank])
-  @@index([submittedAt])
-  @@index([quizId, userId])
-  @@index([quizId, score])
-}
-
-model QuizExamAnalytics {
-  id            String   @id @default(uuid())
-  quizId        String   @unique
-  averageScore  Float    @default(0.0)
-  highestScore  Float    @default(0.0)
-  lowestScore   Float    @default(0.0)
-  totalAttempts Int      @default(0)
-  topperId      String?
-  createdAt     DateTime @default(now())
-  
-  // Relations
-  quiz          QuizExam @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  topper        User?    @relation(fields: [topperId], references: [id], onDelete: SetNull)
-  
-  @@index([quizId])
-  @@index([topperId])
-  @@index([createdAt])
-}
-
-model PurchaseNotification {
-  id          String   @id @default(uuid())
-  type        String   // 'PURCHASE', 'MONTHLY_PAYMENT', 'MANUAL_ACCESS'
-  title       String
-  message     String
-  amount      Float?
-  isRead      Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  
-  // Relations
-  userId      String
-  courseId    String
-  purchaseId  String?
-  
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([courseId])
-  @@index([type])
-  @@index([isRead])
-  @@index([createdAt])
-  @@index([purchaseId])
-}
-
-model StcetTest {
-  id              String           @id @default(uuid())
-  title           String
-  description     String?
-  instructions    String?
-  status          StcetTestStatus  @default(INACTIVE)
-  durationMinutes Int
-  totalMarks      Int              @default(0)
-  startsAt        DateTime
-  endsAt          DateTime
-  resultsPublishedAt DateTime?
-  resultsPublishedById String?
-  createdById     String
-  updatedById     String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  questions       StcetTestQuestion[]
-  attempts        StcetTestAttempt[]
-
-  @@index([status])
-  @@index([startsAt])
-  @@index([endsAt])
-  @@index([resultsPublishedAt])
-  @@index([createdAt])
-}
-
-model StcetTestQuestion {
-  id              String            @id @default(uuid())
-  testId          String
-  type            StcetQuestionType
-  prompt          String
-  description     String?
-  marks           Int
-  sortOrder       Int               @default(0)
-  options         Json?
-  correctOption   String?
-  codingLanguage  String?
-  referenceScreenshotUrls Json?
-  maxScreenshots  Int               @default(3)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  test            StcetTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
-  answers         StcetTestAnswer[]
-
-  @@index([testId])
-  @@index([type])
-  @@index([sortOrder])
-}
-
-model StcetTestAttempt {
-  id              String            @id @default(uuid())
-  testId          String
-  userId          String
-  status          StcetAttemptStatus @default(IN_PROGRESS)
-  reviewStatus    StcetReviewStatus  @default(NOT_REQUIRED)
-  autoScore       Int               @default(0)
-  manualScore     Int               @default(0)
-  totalScore      Int               @default(0)
-  totalMarks      Int               @default(0)
-  percentage      Float             @default(0.0)
-  generalFeedback String?
-  startedAt       DateTime          @default(now())
-  submittedAt     DateTime?
-  reviewedAt      DateTime?
-  timeTakenSeconds Int?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  test            StcetTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  answers         StcetTestAnswer[]
-
-  @@unique([testId, userId])
-  @@index([testId])
-  @@index([userId])
-  @@index([status])
-  @@index([reviewStatus])
-  @@index([submittedAt])
-}
-
-model StcetTestAnswer {
-  id                 String           @id @default(uuid())
-  attemptId          String
-  questionId         String
-  selectedOption     String?
-  codeAnswer         String?
-  submittedLanguage  String?
-  screenshotUrls     Json             @default("[]")
-  isCorrect          Boolean?
-  autoAwardedMarks   Int              @default(0)
-  manualAwardedMarks Int?
-  finalAwardedMarks  Int              @default(0)
-  reviewerNotes      String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  attempt            StcetTestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question           StcetTestQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
-  @@unique([attemptId, questionId])
-  @@index([attemptId])
-  @@index([questionId])
+enum AdmissionStatus {
+  OPEN
+  CLOSED
+  COMING_SOON
 }

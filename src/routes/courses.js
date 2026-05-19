@@ -5,6 +5,7 @@ const createCourseSchema = z.object({
   title: z.string().min(2),
   slug: z.string().min(2),
   imageUrl: z.string().url().nullable().optional(),
+  admissionStatus:z.enum(["Open","Closed","Coming_Soon"]),
   priceRupees: z.number().nonnegative(),
   shortDesc: z.string().min(2),
   longDesc: z.string().min(2),
@@ -25,6 +26,7 @@ export function coursesRouter(prisma) {
           id: true,
           title: true,
           slug: true,
+          admissionStatus: true,
           imageUrl: true,
           priceRupees: true,
           shortDesc: true,
@@ -39,9 +41,11 @@ export function coursesRouter(prisma) {
         },
         orderBy: { createdAt: 'desc' },
         take: 50 // Limit results
-      });
+      }); 
+
+
       
-      // Replace S3 URLs with CloudFront URLs and add cache busting
+     // Replace S3 URLs with CloudFront URLs and add cache busting
       const coursesWithCloudFront = courses.map(course => ({
         ...course,
         imageUrl: course.imageUrl 
@@ -55,7 +59,9 @@ export function coursesRouter(prisma) {
       // Set cache headers - reduced cache time for image updates
       res.set('Cache-Control', 'public, max-age=60'); // Cache for 1 minute
       res.json(coursesWithCloudFront);
-    } catch (e) { next(e); }
+    } catch (e) {
+      console.log(e);
+      next(e); }
   });
 
   router.get('/:slug', async (req, res, next) => {
